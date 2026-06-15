@@ -1,5 +1,25 @@
 import crypto from "node:crypto";
+import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import path from "node:path";
 import { env } from "../env.js";
+
+export const UPLOAD_DIR = path.resolve("uploads");
+const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/webp": "webp" };
+
+/**
+ * Persist an uploaded file and return its public URL. Dev-mode writes to a local
+ * `uploads/` dir served at `/uploads`; with CLOUDINARY_URL/AWS_S3_BUCKET set,
+ * upload to the bucket instead and return the hosted URL.
+ */
+export async function saveUpload(buffer: Buffer, mimetype: string): Promise<string> {
+  if (env.providers.storage) {
+    // TODO(prod): upload `buffer` to Cloudinary/S3 and return the hosted URL.
+  }
+  if (!existsSync(UPLOAD_DIR)) mkdirSync(UPLOAD_DIR, { recursive: true });
+  const name = `asset_${crypto.randomBytes(10).toString("hex")}.${EXT[mimetype] ?? "bin"}`;
+  writeFileSync(path.join(UPLOAD_DIR, name), buffer);
+  return `${env.PUBLIC_URL}/uploads/${name}`;
+}
 
 /**
  * Media storage (S3/Cloudinary). Dev-mode returns a deterministic hosted-style

@@ -3,7 +3,8 @@ import { prisma } from "../db.js";
 import { ok, asyncHandler } from "../lib/http.js";
 import { AppError } from "../lib/errors.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
-import { presignUpload, resolveMediaUrl } from "../providers/storage.js";
+import { upload } from "../middleware/upload.js";
+import { presignUpload, resolveMediaUrl, saveUpload } from "../providers/storage.js";
 
 export const mediaRouter = Router();
 mediaRouter.use(requireAuth);
@@ -13,9 +14,11 @@ mediaRouter.post("/presign", asyncHandler(async (req, res) => {
   ok(res, presignUpload(type));
 }));
 
-mediaRouter.post("/", asyncHandler(async (req, res) => {
-  const url = resolveMediaUrl(String(req.body?.url ?? req.body?.dataUrl ?? ""));
-  const type = String(req.body?.type ?? "image");
+mediaRouter.post("/", upload.single("file"), asyncHandler(async (req, res) => {
+  const url = req.file
+    ? await saveUpload(req.file.buffer, req.file.mimetype)
+    : resolveMediaUrl(String(req.body?.url ?? req.body?.dataUrl ?? ""));
+  const type = req.file?.mimetype ?? String(req.body?.type ?? "image");
   const asset = await prisma.mediaAsset.create({ data: { userId: authUserId(req), url, type } });
   ok(res, { id: asset.id, url: asset.url, type: asset.type }, 201);
 }));

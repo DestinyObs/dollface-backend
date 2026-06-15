@@ -5,13 +5,16 @@ import { ok, asyncHandler } from "../lib/http.js";
 import { AppError } from "../lib/errors.js";
 import { presentRecreation } from "../lib/presenters.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
+import { upload } from "../middleware/upload.js";
+import { saveUpload } from "../providers/storage.js";
 import { SAMPLE_RECREATION } from "../lib/samples.js";
 
 export const recreateRouter = Router();
 recreateRouter.use(requireAuth);
 
 /** Upload inspiration → kick off (synthetic) analysis, persist the breakdown. */
-recreateRouter.post("/upload", asyncHandler(async (req, res) => {
+recreateRouter.post("/upload", upload.single("image"), asyncHandler(async (req, res) => {
+  if (req.file) await prisma.mediaAsset.create({ data: { userId: authUserId(req), url: await saveUpload(req.file.buffer, req.file.mimetype), type: "inspiration" } }).catch(() => {});
   const rec = await prisma.recreation.create({
     data: {
       userId: authUserId(req),

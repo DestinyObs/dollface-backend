@@ -1,6 +1,8 @@
-import { Router, type Request } from "express";
+import { Router } from "express";
+import crypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { sendEmail } from "../providers/email.js";
 import { ok, asyncHandler } from "../lib/http.js";
 import { AppError } from "../lib/errors.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
@@ -106,13 +108,33 @@ authRouter.get("/check-email", asyncHandler(async (req, res) => {
   ok(res, { available: !exists });
 }));
 
-authRouter.post("/forgot-password", asyncHandler(async (_req, res) => {
-  // Email transport is a later phase — respond generically so we never leak
-  // whether an account exists.
+authRouter.post("/forgot-password", asyncHandler(async (req, res) => {
+  const email = String(req.body?.email ?? "").toLowerCase();
+  const user = email ? await prisma.user.findUnique({ where: { email } }) : null;
+  if (user) {
+    const token = crypto.randomBytes(24).toString("hex");
+    await prisma.emailToken.create({ data: { userId: user.id, token, type: "RESET", expiresAt: new Date(Date.now() + 3600000) } });
+    await sendEmail(user.email, "Reset your DollFace password", `Reset code: ${token}\nOpen the app: dollface://reset-password?token=${token}`);
+    // Respond generically (never leak account existence); expose the token only
+    // in non-production so dev/tests can complete the flow without inbox access.
+    if (!env.isProd) return ok(res, { message: "If that email exists, a reset link has been sent.", devToken: token });
+  }
   ok(res, { message: "If that email exists, a reset link has been sent." });
 }));
 
-authRouter.post("/reset-password", asyncHandler(async (_req, res) => {
+const resetSchema = z.object({ token: z.string().min(1), password: z.string().min(8).max(128) });
+
+authRouter.post("/reset-password", asyncHandler(async (req, res) => {
+  const { token, password } = resetSchema.parse(req.body);
+  const row = await prisma.emailToken.findUnique({ where: { token } });
+  if (!row || row.type !== "RESET" || row.usedAt || row.expiresAt < new Date()) {
+    throw new AppError(400, "Invalid or expired reset link", "TOKEN_INVALID");
+  }
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: row.userId }, data: { passwordHash: await hashPassword(password) } }),
+    prisma.emailToken.update({ where: { id: row.id }, data: { usedAt: new Date() } }),
+    prisma.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+  ]);
   ok(res, { message: "Password updated." });
 }));
 

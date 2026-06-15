@@ -5,7 +5,8 @@ import { ok, asyncHandler } from "../lib/http.js";
 import { AppError } from "../lib/errors.js";
 import { presentUser } from "../lib/presenters.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
-import { resolveMediaUrl } from "../providers/storage.js";
+import { upload } from "../middleware/upload.js";
+import { resolveMediaUrl, saveUpload } from "../providers/storage.js";
 
 export const accountRouter = Router();
 accountRouter.use(requireAuth);
@@ -69,8 +70,10 @@ accountRouter.patch("/settings", asyncHandler(async (req, res) => {
 }));
 
 // ── Avatar ────────────────────────────────────────────────
-accountRouter.post("/avatar", asyncHandler(async (req, res) => {
-  const avatarUrl = resolveMediaUrl(String(req.body?.url ?? req.body?.dataUrl ?? ""));
+accountRouter.post("/avatar", upload.single("avatar"), asyncHandler(async (req, res) => {
+  const avatarUrl = req.file
+    ? await saveUpload(req.file.buffer, req.file.mimetype)
+    : resolveMediaUrl(String(req.body?.url ?? req.body?.dataUrl ?? ""));
   await prisma.user.update({ where: { id: authUserId(req) }, data: { avatarUrl } });
   ok(res, { avatarUrl });
 }));

@@ -6,6 +6,8 @@ import { ok, asyncHandler } from "../lib/http.js";
 import { AppError } from "../lib/errors.js";
 import { presentMatchResult, presentRecentMatch, presentMatchHistoryItem, presentScan } from "../lib/presenters.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
+import { upload } from "../middleware/upload.js";
+import { saveUpload } from "../providers/storage.js";
 import { SAMPLE_TONE, SAMPLE_MATCH_ITEMS, SAMPLE_MATCH_HEADLINE } from "../lib/samples.js";
 
 export const matchRouter = Router();
@@ -32,8 +34,9 @@ matchRouter.get("/scans", requireAuth, asyncHandler(async (req, res) => {
 }));
 
 /** Selfie scan → records a scan + a shade match, returns the result. */
-matchRouter.post("/selfie", requireAuth, asyncHandler(async (req, res) => {
+matchRouter.post("/selfie", requireAuth, upload.single("selfie"), asyncHandler(async (req, res) => {
   const userId = authUserId(req);
+  if (req.file) await prisma.mediaAsset.create({ data: { userId, url: await saveUpload(req.file.buffer, req.file.mimetype), type: "selfie" } }).catch(() => {});
   const items = SAMPLE_MATCH_ITEMS as unknown as Prisma.InputJsonValue;
   const [, match] = await prisma.$transaction([
     prisma.scan.create({ data: { userId, tone: SAMPLE_TONE.label, confidence: "High" } }),

@@ -50,6 +50,24 @@ describe("auth", () => {
   });
 });
 
+describe("password reset", () => {
+  it("forgot → reset → login with the new password", async () => {
+    const email = unique();
+    await request(app).post("/api/auth/register").send({ name: "Reset Me", email, password: "password123" });
+    const forgot = await request(app).post("/api/auth/forgot-password").send({ email });
+    const token = forgot.body.data.devToken;
+    expect(token).toBeTruthy();
+    const reset = await request(app).post("/api/auth/reset-password").send({ token, password: "newpassword456" });
+    expect(reset.status).toBe(200);
+    const login = await request(app).post("/api/auth/login").send({ email, password: "newpassword456" });
+    expect(login.status).toBe(200);
+  });
+  it("rejects an invalid reset token", async () => {
+    const r = await request(app).post("/api/auth/reset-password").send({ token: "nope", password: "whatever123" });
+    expect(r.status).toBe(400);
+  });
+});
+
 describe("auth guard", () => {
   it("401 without token", async () => {
     const r = await request(app).get("/api/me");

@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
 import { env } from "./env.js";
+import { UPLOAD_DIR } from "./providers/storage.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 import { notFoundHandler, errorMiddleware } from "./lib/errors.js";
 import { mounts } from "./routes.js";
@@ -14,6 +15,9 @@ export function createApp() {
   app.use(helmet({ contentSecurityPolicy: false })); // CSP off so Swagger UI assets load
   app.use(cors({ origin: env.corsOrigins.length ? env.corsOrigins : true, credentials: true }));
   app.use(express.json({ limit: "2mb", verify: (req, _res, buf) => { (req as unknown as { rawBody: Buffer }).rawBody = buf; } }));
+
+  // Uploaded media (dev-mode local storage; swap for S3/Cloudinary in prod)
+  app.use("/uploads", express.static(UPLOAD_DIR));
 
   // Liveness (load balancers / uptime monitors)
   app.get("/health", (_req, res) =>
