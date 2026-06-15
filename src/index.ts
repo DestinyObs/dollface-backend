@@ -1,25 +1,19 @@
-import "dotenv/config";
-import express from "express";
-import cors from "cors";
-import { authRouter } from "./routes/auth.routes.js";
+import { createApp } from "./app.js";
+import { env } from "./env.js";
+import { prisma } from "./db.js";
 
-const app = express();
-const PORT = process.env.PORT ?? 4200;
+const app = createApp();
 
-app.use(cors());
-app.use(express.json());
-
-// Health check (used by load balancers / uptime monitors)
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok", service: "dollface-backend", time: new Date().toISOString() });
+const server = app.listen(env.PORT, () => {
+  console.log(`DollFace API listening on http://localhost:${env.PORT}  (${env.NODE_ENV})`);
 });
 
-// API routes — base path matches the mobile app's `EXPO_PUBLIC_API_URL` (.../api)
-app.use("/api/auth", authRouter);
+async function shutdown(signal: string) {
+  console.log(`\n${signal} received — shutting down gracefully…`);
+  server.close();
+  await prisma.$disconnect();
+  process.exit(0);
+}
 
-// 404
-app.use((_req, res) => res.status(404).json({ success: false, message: "Not found" }));
-
-app.listen(PORT, () => {
-  console.log(`DollFace API listening on http://localhost:${PORT}`);
-});
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));

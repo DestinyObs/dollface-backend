@@ -1,0 +1,320 @@
+// DollFace API — Prisma schema (Phase 1 / MVP)
+// Models map to dollface-backend/API_SPEC.md §2 and the shapes the app consumes
+// (dollface-mobile/lib/data/types.ts). Catalog entities use stable string ids
+// (so they line up with the seed the app already references); user-owned rows use cuid.
+// Variable/nested structures (steps, shades, tone items, look sections) use Json;
+// flat list fields use native Postgres String[].
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum MatchKind {
+  SELFIE
+  MANUAL
+}
+
+enum PlanTier {
+  FREE
+  PRO
+}
+
+enum NotificationType {
+  MATCH
+  TUTORIAL
+  RECREATION
+  PROMO
+  SYSTEM
+}
+
+// ── Identity ──────────────────────────────────────────────
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  avatarUrl    String?
+  bio          String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  refreshTokens RefreshToken[]
+  beautyProfile BeautyProfile?
+  settings      Settings?
+  subscription  Subscription?
+  cart          Cart?
+  matches       ShadeMatch[]
+  scans         Scan[]
+  recreations   Recreation[]
+  notifications Notification[]
+  routines      Routine[]
+  tutorialSaves TutorialSave[]
+  productSaves  ProductSave[]
+  savedLooks    SavedLook[]
+  completions   TutorialCompletion[]
+  progress      TutorialProgress[]
+}
+
+// One row per issued refresh token (hashed). Enables rotation + revocation
+// (logout, logout-everywhere) per API_SPEC §3.1.
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  userAgent String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ── Account ───────────────────────────────────────────────
+model BeautyProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  data               Json     @default("{}") // onboarding selections (goals, tone, undertone, …)
+  onboardingComplete Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Settings {
+  id              String  @id @default(cuid())
+  userId          String  @unique
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  push            Boolean @default(true)
+  email           Boolean @default(true)
+  tips            Boolean @default(true)
+  analytics       Boolean @default(true)
+  personalisation Boolean @default(true)
+  storeScans      Boolean @default(true)
+}
+
+model Subscription {
+  id       String    @id @default(cuid())
+  userId   String    @unique
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     PlanTier  @default(FREE)
+  status   String    @default("Active")
+  renewsAt DateTime?
+}
+
+// ── Catalog (global, seeded) ──────────────────────────────
+model Tutorial {
+  id           String  @id
+  title        String
+  cat          String
+  mins         String
+  level        String
+  views        String
+  img          String
+  description  String
+  steps        Json // TutorialStep[]
+  featured      Boolean @default(false)
+  eyebrow       String?
+  featuredTitle String?
+  featuredMeta  String?
+  featuredImg   String?
+  order         Int     @default(0)
+
+  saves       TutorialSave[]
+  completions TutorialCompletion[]
+  progress    TutorialProgress[]
+}
+
+model Product {
+  id          String   @id
+  name        String
+  brand       String
+  category    String
+  priceLabel  String // "£34" (summary)
+  priceAmount Float // 34   (detail / cart)
+  rating      String
+  img         String
+  reviewCount String   @default("0 reviews")
+  highlights  String[]
+  description String   @default("")
+  shades      Json // ProductShade[]
+  order       Int      @default(0)
+
+  saves ProductSave[]
+}
+
+model Look {
+  id    String @id
+  label String
+  meta  String
+  level String
+  img   String
+  order Int    @default(0)
+}
+
+// ── Learning activity ─────────────────────────────────────
+model TutorialSave {
+  id         String   @id @default(cuid())
+  userId     String
+  tutorialId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tutorial   Tutorial @relation(fields: [tutorialId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, tutorialId])
+  @@index([userId])
+}
+
+model TutorialCompletion {
+  id          String   @id @default(cuid())
+  userId      String
+  tutorialId  String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tutorial    Tutorial @relation(fields: [tutorialId], references: [id], onDelete: Cascade)
+  completedAt DateTime @default(now())
+
+  @@unique([userId, tutorialId])
+}
+
+model TutorialProgress {
+  id         String   @id @default(cuid())
+  userId     String
+  tutorialId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tutorial   Tutorial @relation(fields: [tutorialId], references: [id], onDelete: Cascade)
+  pct        Int      @default(0)
+  meta       String?
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, tutorialId])
+}
+
+// ── Shade match / scans / recreations ─────────────────────
+model ShadeMatch {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind           MatchKind @default(SELFIE)
+  name           String // headline matched shade (for recent/history list)
+  brand          String
+  pct            String
+  color          String
+  toneLabel      String
+  toneSub        String
+  toneHex        String
+  toneConfidence String
+  items          Json // MatchResultItem[]
+  createdAt      DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Scan {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tone       String
+  confidence String
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Recreation {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String   @default("DONE")
+  versions  String[]
+  aiNote    String
+  sections  Json // RecreateSection[]
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// ── Commerce: cart + saved ────────────────────────────────
+model Cart {
+  id     String     @id @default(cuid())
+  userId String     @unique
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items  CartItem[]
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  cartId    String
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String?
+  name      String
+  brand     String
+  price     Float
+  shade     String?
+  img       String?
+  qty       Int     @default(1)
+}
+
+model ProductSave {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+// Looks aren't a catalog entity the user owns — a saved look is a snapshot.
+model SavedLook {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lookId    String
+  title     String
+  subtitle  String?
+  img       String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, lookId])
+  @@index([userId])
+}
+
+// ── Engagement ────────────────────────────────────────────
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType @default(SYSTEM)
+  title     String
+  body      String
+  route     String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Routine {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  time      String
+  steps     String[]
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
