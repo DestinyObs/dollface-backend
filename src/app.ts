@@ -2,7 +2,9 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
+import pinoHttp from "pino-http";
 import { env } from "./env.js";
+import { logger } from "./lib/logger.js";
 import { UPLOAD_DIR } from "./providers/storage.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 import { notFoundHandler, errorMiddleware } from "./lib/errors.js";
@@ -12,6 +14,7 @@ import { buildOpenApiSpec } from "./docs/openapi.js";
 export function createApp() {
   const app = express();
 
+  if (env.NODE_ENV !== "test") app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/health" } }));
   app.use(helmet({ contentSecurityPolicy: false })); // CSP off so Swagger UI assets load
   app.use(cors({ origin: env.corsOrigins.length ? env.corsOrigins : true, credentials: true }));
   app.use(express.json({ limit: "2mb", verify: (req, _res, buf) => { (req as unknown as { rawBody: Buffer }).rawBody = buf; } }));

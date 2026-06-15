@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
 import { env } from "../env.js";
+import { logger } from "./logger.js";
 
 /** Throwable application error with an HTTP status + optional machine code. */
 export class AppError extends Error {
@@ -37,7 +38,8 @@ export function errorMiddleware(err: unknown, _req: Request, res: Response, _nex
     if (err.code === "P2025") return res.status(404).json({ success: false, message: "Not found", code: "NOT_FOUND" });
   }
 
-  console.error("Unhandled error:", err);
+  // TODO(prod): forward to Sentry/error tracking here.
+  logger.error({ err }, "Unhandled error");
   return res.status(500).json({
     success: false,
     message: "Something went wrong",
