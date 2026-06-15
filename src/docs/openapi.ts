@@ -1,5 +1,6 @@
 import { mounts } from "../routes.js";
 import { env } from "../env.js";
+import { ENRICH } from "./enrich.js";
 
 /* Express layer typing is loose; introspect the stack pragmatically. */
 interface ExpressLayer {
@@ -44,17 +45,37 @@ export function buildOpenApiSpec() {
       for (const method of Object.keys(layer.route.methods)) {
         const M = method.toUpperCase();
         if (M === "HEAD" || M === "OPTIONS") continue;
+        const enrich = ENRICH[`${M} ${oaPath}`];
+
+        // Real request body schema where documented; otherwise a generic object.
+        const requestBody = ["POST", "PUT", "PATCH"].includes(M)
+          ? {
+              requestBody: {
+                content: {
+                  "application/json": {
+                    schema: enrich?.request
+                      ? { type: "object", properties: enrich.request.properties, ...(enrich.request.required ? { required: enrich.request.required } : {}) }
+                      : { type: "object" },
+                  },
+                },
+              },
+            }
+          : {};
+
+        // Real example response where documented.
+        const okResponse = enrich?.responseExample
+          ? { description: "Success", content: { "application/json": { schema: { $ref: "#/components/schemas/Envelope" }, example: enrich.responseExample } } }
+          : { description: "Success", content: { "application/json": { schema: { $ref: "#/components/schemas/Envelope" } } } };
+
         paths[oaPath] ??= {};
         paths[oaPath][method] = {
           tags: [tag],
           summary: summarise(M, oaPath),
           ...(params.length ? { parameters: params } : {}),
           ...(isPublic(M, fullPath) ? {} : { security: [{ bearerAuth: [] }] }),
-          ...(["POST", "PUT", "PATCH"].includes(M)
-            ? { requestBody: { content: { "application/json": { schema: { type: "object" } } } } }
-            : {}),
+          ...requestBody,
           responses: {
-            "200": { description: "Success", content: { "application/json": { schema: { $ref: "#/components/schemas/Envelope" } } } },
+            "200": okResponse,
             "400": { description: "Validation error", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
             ...(isPublic(M, fullPath) ? {} : { "401": { description: "Unauthenticated", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } } }),
           },
