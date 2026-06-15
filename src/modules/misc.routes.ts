@@ -1,7 +1,9 @@
 import { Router } from "express";
+import crypto from "node:crypto";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+import { env } from "../env.js";
 import { ok, asyncHandler } from "../lib/http.js";
 
 // ── /events (analytics/telemetry) ─────────────────────────
@@ -57,8 +59,33 @@ marketingRouter.post("/newsletter/unsubscribe", asyncHandler(async (req, res) =>
 // ── /webhooks (inbound, server-to-server) ─────────────────
 export const webhooksRouter = Router();
 
-// Dev acks; in prod verify signatures (Stripe-Signature, etc.) on the raw body.
-for (const provider of ["stripe", "revenuecat", "apple", "google", "shipping"]) {
+/** Verify a Stripe webhook signature (t=…,v1=… HMAC-SHA256 over `${t}.${body}`). */
+function verifyStripeSignature(rawBody: string, header: string, secret: string): boolean {
+  try {
+    const parts = Object.fromEntries(header.split(",").map((kv) => kv.split("=")));
+    const expected = crypto.createHmac("sha256", secret).update(`${parts.t}.${rawBody}`).digest("hex");
+    const a = Buffer.from(expected);
+    const b = Buffer.from(parts.v1 ?? "");
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+webhooksRouter.post("/stripe", asyncHandler(async (req, res) => {
+  if (env.STRIPE_WEBHOOK_SECRET) {
+    const sig = req.headers["stripe-signature"];
+    const raw = req.rawBody?.toString("utf8") ?? "";
+    if (!sig || !verifyStripeSignature(raw, String(sig), env.STRIPE_WEBHOOK_SECRET)) {
+      return res.status(400).json({ received: false, error: "Invalid signature" });
+    }
+  }
+  console.log("[webhook:stripe]", req.body?.type ?? "event");
+  res.json({ received: true });
+}));
+
+// Other providers ack in dev; harden with each provider's signature scheme for prod.
+for (const provider of ["revenuecat", "apple", "google", "shipping"]) {
   webhooksRouter.post(`/${provider}`, asyncHandler(async (req, res) => {
     console.log(`[webhook:${provider}]`, typeof req.body === "object" ? Object.keys(req.body ?? {}) : "received");
     res.json({ received: true });

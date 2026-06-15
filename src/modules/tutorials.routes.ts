@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
-import { ok, asyncHandler } from "../lib/http.js";
+import { ok, asyncHandler, paginate } from "../lib/http.js";
 import { AppError } from "../lib/errors.js";
 import { presentTutorialSummary, presentFeaturedTutorial, presentTutorialDetail } from "../lib/presenters.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
@@ -17,7 +17,7 @@ tutorialsRouter.get("/", asyncHandler(async (req, res) => {
   if (category && category !== "All") where.cat = category;
   if (search) where.title = { contains: search, mode: "insensitive" };
   const items = await prisma.tutorial.findMany({ where, orderBy: { order: "asc" } });
-  ok(res, items.map(presentTutorialSummary));
+  ok(res, paginate(items.map(presentTutorialSummary), req.query));
 }));
 
 tutorialsRouter.get("/featured", asyncHandler(async (_req, res) => {

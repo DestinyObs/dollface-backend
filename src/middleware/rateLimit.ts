@@ -1,4 +1,7 @@
 import rateLimit from "express-rate-limit";
+import { env } from "../env.js";
+
+const skip = () => env.NODE_ENV === "test";
 
 /** Tight limit on auth endpoints (brute-force protection). */
 export const authLimiter = rateLimit({
@@ -6,6 +9,7 @@ export const authLimiter = rateLimit({
   max: 50,
   standardHeaders: true,
   legacyHeaders: false,
+  skip,
   message: { success: false, message: "Too many attempts, please try again later.", code: "RATE_LIMIT" },
 });
 
@@ -15,5 +19,6 @@ export const apiLimiter = rateLimit({
   max: 600,
   standardHeaders: true,
   legacyHeaders: false,
+  skip,
   message: { success: false, message: "Too many requests.", code: "RATE_LIMIT" },
 });

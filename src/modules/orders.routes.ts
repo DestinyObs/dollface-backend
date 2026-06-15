@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Order, OrderItem } from "@prisma/client";
 import { prisma } from "../db.js";
-import { ok, asyncHandler } from "../lib/http.js";
+import { ok, asyncHandler, paginate } from "../lib/http.js";
 import { AppError } from "../lib/errors.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
 import { createPaymentIntent } from "../providers/payments.js";
@@ -76,7 +76,7 @@ ordersRouter.post("/", asyncHandler(async (req, res) => {
 
 ordersRouter.get("/", asyncHandler(async (req, res) => {
   const orders = await prisma.order.findMany({ where: { userId: authUserId(req) }, include: { items: true }, orderBy: { createdAt: "desc" } });
-  ok(res, orders.map(present));
+  ok(res, paginate(orders.map(present), req.query));
 }));
 
 ordersRouter.get("/:id", asyncHandler(async (req, res) => {
