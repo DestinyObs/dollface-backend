@@ -1,33 +1,76 @@
-# DollFace Backend
+# DollFace API
 
-API for the DollFace beauty app (auth, beauty profiles, shade matching, products).
+The backend for the **DollFace** beauty app — auth, beauty profiles, AI shade
+matching, look recreation, tutorials, products & commerce.
 
-**Stack:** Node.js + Express + TypeScript + Zod + JWT.
+**Stack:** Node.js + Express + TypeScript · Prisma + PostgreSQL · JWT (access +
+refresh rotation) · Argon2 · Zod · Helmet · rate limiting.
+
+Responses use the envelope the app already expects — `{ success, data }` — so the
+mobile app switches from its built-in mock to this API just by setting
+`EXPO_PUBLIC_API_URL=http://localhost:4200/api`.
+
+---
 
 ## Getting started
 
 ```bash
-cd dollface-backend
 npm install
-cp .env.example .env   # then edit JWT_SECRET
-npm run dev            # http://localhost:4200
+cp .env.example .env          # dev defaults work as-is
+docker compose up -d          # Postgres on localhost:5434
+npx prisma migrate dev        # create the schema
+npm run seed                  # tutorials, products & looks catalog
+npm run dev                   # http://localhost:4200
 ```
 
-## Endpoints (skeleton)
+## Scripts
 
-| Method | Path                     | Notes                                   |
-| ------ | ------------------------ | --------------------------------------- |
-| GET    | `/health`                | health check                            |
-| POST   | `/api/auth/register`     | `{ name, email, password }`             |
-| POST   | `/api/auth/login`        | `{ email, password }`                   |
-| POST   | `/api/auth/refresh-token`| `{ refreshToken }`                      |
+| Script | Purpose |
+|--------|---------|
+| `npm run dev` | watch-mode dev server (tsx) |
+| `npm run build` | `prisma generate` + `tsc` → `dist/` |
+| `npm start` | run the compiled server |
+| `npm run seed` | seed the catalog |
+| `npm run db:up` / `db:down` | start/stop the Postgres container |
+| `npm run prisma:studio` | browse the database |
 
-Responses use the envelope `{ success, data }` — the **same shape** the mobile
-app's mock (`dollface-mobile/lib/mockApi.ts`) returns, so connecting the app is
-just setting `EXPO_PUBLIC_API_URL=http://localhost:4200/api`.
+## Architecture
 
-## TODO before production
-- Replace the in-memory user store with Postgres (Prisma/Drizzle).
-- Hash passwords (bcrypt/argon2).
-- Add beauty-profile, shade-match and product routes.
-- Rate limiting, request logging, validation middleware.
+```
+prisma/schema.prisma     data model (Phase 1) + migrations + seed
+src/
+  app.ts                 express app — mounts every router under /api
+  index.ts               bootstrap + graceful shutdown
+  env.ts  db.ts          validated env · Prisma client
+  lib/                   http envelope, errors, jwt, password, presenters, samples
+  middleware/            requireAuth, rate limiters
+  modules/               one router per domain (auth, account, beauty-profile,
+                         feed, tutorials, products, match, recreate, cart, saved,
+                         subscription, notifications, routines, system, content)
+```
+
+Every DB row is mapped to the app's exact shape in `lib/presenters.ts` — the one
+place the wire contract lives.
+
+## Endpoints
+
+This phase implements the **MVP surface (~55 endpoints)** of
+[`API_SPEC.md`](./API_SPEC.md): auth & sessions, account/settings/stats, beauty
+profile, home feed, shade match (+ history & scans), look recreation, tutorials
+(+ saves/completion), products (+ saves), cart, saved looks, subscription,
+notifications, routines, system config/flags/version/health, and terms/privacy.
+Later phases (commerce checkout, payments, reviews, search, admin…) slot into the
+same module structure.
+
+```bash
+curl http://localhost:4200/health
+curl http://localhost:4200/api/tutorials
+```
+
+## Security
+
+- Passwords hashed with **Argon2id**.
+- **JWT** access tokens (~15 min) + persisted, hashed **refresh tokens** with
+  revocation (logout, change-password) and a unique `jti` per token.
+- **Helmet** headers, **CORS** allow-list, and **rate limiting** (tight on auth).
+- Validation with **Zod**; consistent error envelope with field-level messages.
