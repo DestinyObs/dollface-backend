@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { ok, asyncHandler } from "../lib/http.js";
+import { ok, asyncHandler, paginate } from "../lib/http.js";
 import { AppError } from "../lib/errors.js";
 import { presentNotification } from "../lib/presenters.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
@@ -11,7 +11,7 @@ notificationsRouter.use(requireAuth);
 
 notificationsRouter.get("/", asyncHandler(async (req, res) => {
   const items = await prisma.notification.findMany({ where: { userId: authUserId(req) }, orderBy: { createdAt: "desc" } });
-  ok(res, items.map(presentNotification));
+  ok(res, paginate(items.map(presentNotification), req.query));
 }));
 
 notificationsRouter.get("/unread-count", asyncHandler(async (req, res) => {

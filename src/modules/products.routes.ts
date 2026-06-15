@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
-import { ok, asyncHandler } from "../lib/http.js";
+import { ok, asyncHandler, paginate } from "../lib/http.js";
 import { AppError } from "../lib/errors.js";
 import { presentProductSummary, presentProductDetail } from "../lib/presenters.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
@@ -20,7 +20,7 @@ productsRouter.get("/", asyncHandler(async (req, res) => {
     ];
   }
   const items = await prisma.product.findMany({ where, orderBy: { order: "asc" } });
-  ok(res, items.map(presentProductSummary));
+  ok(res, paginate(items.map(presentProductSummary), req.query));
 }));
 
 productsRouter.get("/categories", asyncHandler(async (_req, res) => {

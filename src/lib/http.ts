@@ -14,6 +14,21 @@ export function asyncHandler(
   };
 }
 
+/**
+ * Optional pagination. Returns the plain array (back-compatible with the app's
+ * mock contract) unless `?page=` or `?limit=` is supplied, in which case it
+ * returns `{ items, page, limit, total, hasMore }`.
+ */
+export function paginate<T>(items: T[], query: Record<string, unknown>): T[] | { items: T[]; page: number; limit: number; total: number; hasMore: boolean } {
+  const hasPage = query.page !== undefined;
+  const hasLimit = query.limit !== undefined;
+  if (!hasPage && !hasLimit) return items;
+  const page = Math.max(1, parseInt(String(query.page ?? "1"), 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(String(query.limit ?? "20"), 10) || 20));
+  const start = (page - 1) * limit;
+  return { items: items.slice(start, start + limit), page, limit, total: items.length, hasMore: start + limit < items.length };
+}
+
 /** Relative time label e.g. "2h", "3 days ago", "Today" — for notifications/history. */
 export function relativeTime(date: Date): string {
   const ms = Date.now() - date.getTime();
