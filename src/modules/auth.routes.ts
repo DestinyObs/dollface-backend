@@ -4,29 +4,23 @@ import { prisma } from "../db.js";
 import { ok, asyncHandler } from "../lib/http.js";
 import { AppError } from "../lib/errors.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
-import {
-  signAccessToken, signRefreshToken, verifyRefreshToken, hashToken, refreshExpiry,
-} from "../lib/jwt.js";
+import { signAccessToken, verifyRefreshToken, hashToken } from "../lib/jwt.js";
+import { issueTokens } from "../lib/session.js";
 import { presentUser } from "../lib/presenters.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
+import { env } from "../env.js";
 
 export const authRouter = Router();
 authRouter.use(authLimiter);
 
-/** Issue an access token + a persisted (hashed) refresh token. */
-async function issueTokens(user: { id: string; role: string }, req: Request) {
-  const accessToken = signAccessToken(user.id, user.role);
-  const refreshToken = signRefreshToken(user.id);
-  await prisma.refreshToken.create({
-    data: {
-      userId: user.id,
-      tokenHash: hashToken(refreshToken),
-      userAgent: req.headers["user-agent"]?.slice(0, 255),
-      expiresAt: refreshExpiry(),
-    },
-  });
-  return { accessToken, refreshToken };
+/** Promote configured admin emails (ADMIN_EMAILS) on sign-in; returns effective role. */
+async function ensureRole(user: { id: string; email: string; role: "USER" | "ADMIN" }): Promise<"USER" | "ADMIN"> {
+  if (env.adminEmails.includes(user.email.toLowerCase()) && user.role !== "ADMIN") {
+    await prisma.user.update({ where: { id: user.id }, data: { role: "ADMIN" } });
+    return "ADMIN";
+  }
+  return user.role;
 }
 
 const registerSchema = z.object({
@@ -45,6 +39,7 @@ authRouter.post("/register", asyncHandler(async (req, res) => {
       name,
       email: email.toLowerCase(),
       passwordHash: await hashPassword(password),
+      role: env.adminEmails.includes(email.toLowerCase()) ? "ADMIN" : "USER",
       subscription: { create: {} },
       settings: { create: {} },
       cart: { create: {} },
@@ -64,12 +59,13 @@ const loginSchema = z.object({ email: z.string().email(), password: z.string().m
 
 authRouter.post("/login", asyncHandler(async (req, res) => {
   const { email, password } = loginSchema.parse(req.body);
-  const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-  if (!user || !(await verifyPassword(user.passwordHash, password))) {
+  const found = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+  if (!found || !(await verifyPassword(found.passwordHash, password))) {
     throw new AppError(401, "Incorrect email or password.", "BAD_CREDENTIALS");
   }
-  const tokens = await issueTokens(user, req);
-  ok(res, { user: presentUser(user), tokens });
+  found.role = await ensureRole(found);
+  const tokens = await issueTokens(found, req);
+  ok(res, { user: presentUser(found), tokens });
 }));
 
 authRouter.post("/refresh-token", asyncHandler(async (req, res) => {

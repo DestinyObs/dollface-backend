@@ -64,7 +64,34 @@ const LOOKS = [
   { id: "bronzed", label: "Bronzed", meta: "1.2k saves", level: "Medium", img: img(PHOTO.modelNatural, 500, 600) },
 ];
 
+const BRANDS = [
+  { id: "fenty-beauty", name: "Fenty Beauty", description: "Inclusive beauty for all skin tones." },
+  { id: "mac", name: "MAC", description: "Professional makeup artistry." },
+  { id: "maybelline", name: "Maybelline", description: "Accessible everyday glam." },
+  { id: "rare-beauty", name: "Rare Beauty", description: "Makeup made to feel good in." },
+  { id: "benefit", name: "Benefit", description: "Brows, bronzers and good times." },
+  { id: "charlotte-tilbury", name: "Charlotte Tilbury", description: "Red-carpet glamour." },
+];
+const brandIdByName: Record<string, string> = Object.fromEntries(BRANDS.map((b) => [b.name, b.id]));
+
+const ACHIEVEMENTS = [
+  { id: "first-match", title: "First Match", description: "Completed your first shade match.", icon: "color-palette", order: 0 },
+  { id: "look-creator", title: "Look Creator", description: "Recreated your first look.", icon: "sparkles", order: 1 },
+  { id: "scholar", title: "Beauty Scholar", description: "Completed 5 tutorials.", icon: "school", order: 2 },
+  { id: "collector", title: "Collector", description: "Saved 10 products.", icon: "bag-handle", order: 3 },
+];
+
+const COUPONS = [
+  { code: "WELCOME10", type: "PERCENT" as const, value: 10 },
+  { code: "DOLL5", type: "FIXED" as const, value: 5 },
+];
+
 async function main() {
+  for (const [i, b] of BRANDS.entries()) {
+    const data = { ...b, order: i };
+    await prisma.brand.upsert({ where: { id: b.id }, create: data, update: data });
+  }
+
   for (const [i, t] of TUTORIALS.entries()) {
     const data = { ...t, description: "A step-by-step guide that looks natural, lasts all day, and works for your skin tone and type.", steps: TUTORIAL_STEPS, order: i };
     await prisma.tutorial.upsert({ where: { id: t.id }, create: data, update: data });
@@ -72,10 +99,11 @@ async function main() {
 
   for (const [i, p] of PRODUCTS.entries()) {
     const data = {
-      id: p.id, name: p.name, brand: p.brand, category: p.category,
+      id: p.id, name: p.name, brand: p.brand, brandId: brandIdByName[p.brand] ?? null, category: p.category,
       priceLabel: p.price, priceAmount: parseFloat(p.price.replace("£", "")),
       rating: p.rating, img: p.img, reviewCount: "2.4k reviews",
-      highlights: PRODUCT_HIGHLIGHTS, description: PRODUCT_DESCRIPTION, shades: PRODUCT_SHADES, order: i,
+      highlights: PRODUCT_HIGHLIGHTS, description: PRODUCT_DESCRIPTION, shades: PRODUCT_SHADES,
+      trending: i < 3, isNew: i >= 4, order: i,
     };
     await prisma.product.upsert({ where: { id: p.id }, create: data, update: data });
   }
@@ -85,10 +113,30 @@ async function main() {
     await prisma.look.upsert({ where: { id: l.id }, create: data, update: data });
   }
 
+  for (const a of ACHIEVEMENTS) {
+    await prisma.achievement.upsert({ where: { id: a.id }, create: a, update: a });
+  }
+
+  for (const c of COUPONS) {
+    await prisma.coupon.upsert({ where: { code: c.code }, create: c, update: c });
+  }
+
+  await prisma.banner.deleteMany();
+  await prisma.banner.create({ data: { placement: "home", title: "Find your perfect shade", img: img(PHOTO.modelBold, 900, 500), route: "/(tabs)/match", order: 0 } });
+
+  await prisma.article.upsert({
+    where: { slug: "undertones-101" },
+    create: { slug: "undertones-101", title: "Undertones 101", excerpt: "Cool, warm or neutral — and why it matters.", body: "Your undertone is the subtle hue beneath your skin...", cover: img(PHOTO.modelSoft, 800, 500) },
+    update: {},
+  });
+
   const counts = {
+    brands: await prisma.brand.count(),
     tutorials: await prisma.tutorial.count(),
     products: await prisma.product.count(),
     looks: await prisma.look.count(),
+    achievements: await prisma.achievement.count(),
+    coupons: await prisma.coupon.count(),
   };
   console.log("✓ Seed complete:", counts);
 }

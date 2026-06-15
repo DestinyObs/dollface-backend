@@ -124,6 +124,7 @@ const NOTIF_PRESENTATION: Record<NotificationType, { icon: string; bg: string; c
   RECREATION: { icon: "sparkles", bg: "#EAF0FB", color: "#3B5BDB" },
   PROMO: { icon: "diamond", bg: "#FBF1E6", color: "#A06A2C" },
   SYSTEM: { icon: "notifications", bg: "#F5EAEF", color: "#753248" },
+  ORDER: { icon: "bag-handle", bg: "#EAF7EF", color: "#2F7D52" },
 };
 
 export const presentNotification = (n: Notification) => ({

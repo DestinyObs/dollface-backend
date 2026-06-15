@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { ok, asyncHandler } from "../lib/http.js";
@@ -65,6 +66,60 @@ tutorialsRouter.post("/:id/complete", requireAuth, asyncHandler(async (req, res)
     update: { completedAt: new Date() },
   });
   ok(res, { ok: true });
+}));
+
+tutorialsRouter.get("/:id/related", asyncHandler(async (req, res) => {
+  const t = await prisma.tutorial.findUnique({ where: { id: req.params.id } });
+  if (!t) throw new AppError(404, "Tutorial not found", "NOT_FOUND");
+  const related = await prisma.tutorial.findMany({ where: { cat: t.cat, id: { not: t.id } }, take: 4, orderBy: { order: "asc" } });
+  ok(res, related.map(presentTutorialSummary));
+}));
+
+tutorialsRouter.get("/:id/stream", asyncHandler(async (req, res) => {
+  // Signed video URL (CDN integration is a later phase).
+  ok(res, { url: `https://stream.dollface.app/${req.params.id}.m3u8`, expiresIn: 3600 });
+}));
+
+const progressSchema = z.object({ step: z.number().int().optional(), percent: z.number().int().min(0).max(100) });
+
+tutorialsRouter.post("/:id/progress", requireAuth, asyncHandler(async (req, res) => {
+  const userId = authUserId(req);
+  const tutorialId = req.params.id;
+  const { percent } = progressSchema.parse(req.body);
+  await prisma.tutorialProgress.upsert({
+    where: { userId_tutorialId: { userId, tutorialId } },
+    create: { userId, tutorialId, pct: percent },
+    update: { pct: percent },
+  });
+  ok(res, { pct: percent });
+}));
+
+tutorialsRouter.post("/:id/like", requireAuth, asyncHandler(async (req, res) => {
+  const userId = authUserId(req);
+  await prisma.tutorialLike.upsert({
+    where: { userId_tutorialId: { userId, tutorialId: req.params.id } },
+    create: { userId, tutorialId: req.params.id }, update: {},
+  });
+  ok(res, { liked: true });
+}));
+
+tutorialsRouter.delete("/:id/like", requireAuth, asyncHandler(async (req, res) => {
+  await prisma.tutorialLike.deleteMany({ where: { userId: authUserId(req), tutorialId: req.params.id } });
+  ok(res, { liked: false });
+}));
+
+tutorialsRouter.get("/:id/comments", asyncHandler(async (req, res) => {
+  const comments = await prisma.tutorialComment.findMany({
+    where: { tutorialId: req.params.id }, include: { user: { select: { name: true, avatarUrl: true } } }, orderBy: { createdAt: "desc" }, take: 50,
+  });
+  ok(res, comments.map((c) => ({ id: c.id, author: c.user.name, avatar: c.user.avatarUrl ?? undefined, body: c.body, createdAt: c.createdAt.toISOString() })));
+}));
+
+tutorialsRouter.post("/:id/comments", requireAuth, asyncHandler(async (req, res) => {
+  const body = String(req.body?.body ?? "").trim();
+  if (!body) throw new AppError(400, "Comment cannot be empty", "EMPTY");
+  const c = await prisma.tutorialComment.create({ data: { tutorialId: req.params.id, userId: authUserId(req), body } });
+  ok(res, { id: c.id, body: c.body, createdAt: c.createdAt.toISOString() }, 201);
 }));
 
 // ── detail (keep last so it doesn't shadow the routes above) ──

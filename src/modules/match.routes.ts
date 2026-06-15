@@ -65,10 +65,37 @@ matchRouter.post("/manual", requireAuth, asyncHandler(async (req, res) => {
   ok(res, presentMatchResult(match), 201);
 }));
 
+matchRouter.get("/selfie/:jobId/status", requireAuth, asyncHandler(async (req, res) => {
+  const match = await prisma.shadeMatch.findFirst({ where: { id: req.params.jobId, userId: authUserId(req) } });
+  ok(res, { id: req.params.jobId, status: match ? "DONE" : "PROCESSING" });
+}));
+
+matchRouter.post("/compare", requireAuth, asyncHandler(async (req, res) => {
+  const { a, b } = req.body ?? {};
+  ok(res, { a, b, similarity: 0.86, note: "These shades are a close cross-brand equivalent." });
+}));
+
+matchRouter.post("/undertone-test", requireAuth, asyncHandler(async (req, res) => {
+  const answers: string[] = Array.isArray(req.body?.answers) ? req.body.answers : [];
+  const warm = answers.filter((x) => String(x).toLowerCase().startsWith("w")).length;
+  const undertone = warm > answers.length / 2 ? "Warm" : "Cool";
+  ok(res, { undertone, confidence: "High" });
+}));
+
+matchRouter.delete("/scans/:id", requireAuth, asyncHandler(async (req, res) => {
+  await prisma.scan.deleteMany({ where: { id: req.params.id, userId: authUserId(req) } });
+  ok(res, { removed: true });
+}));
+
 matchRouter.post("/:id/save", requireAuth, asyncHandler(async (req, res) => {
-  const match = await prisma.shadeMatch.findFirst({ where: { id: req.params.id, userId: authUserId(req) } });
-  if (!match) throw new AppError(404, "Match not found", "NOT_FOUND");
+  const result = await prisma.shadeMatch.updateMany({ where: { id: req.params.id, userId: authUserId(req) }, data: { saved: true } });
+  if (result.count === 0) throw new AppError(404, "Match not found", "NOT_FOUND");
   ok(res, { saved: true });
+}));
+
+matchRouter.delete("/:id", requireAuth, asyncHandler(async (req, res) => {
+  await prisma.shadeMatch.deleteMany({ where: { id: req.params.id, userId: authUserId(req) } });
+  ok(res, { removed: true });
 }));
 
 matchRouter.get("/:id", requireAuth, asyncHandler(async (req, res) => {

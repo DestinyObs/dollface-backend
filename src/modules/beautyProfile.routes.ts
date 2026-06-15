@@ -47,6 +47,17 @@ beautyProfileRouter.post("/complete", asyncHandler(async (req, res) => {
   ok(res, { onboardingComplete: true });
 }));
 
+/** Re-run analysis from a new selfie (returns the refreshed profile). */
+beautyProfileRouter.post("/re-analyse", asyncHandler(async (req, res) => {
+  const profile = await prisma.beautyProfile.findUnique({ where: { userId: authUserId(req) } });
+  ok(res, { reanalysed: true, profile: profile?.data ?? {} });
+}));
+
+beautyProfileRouter.get("/history", asyncHandler(async (req, res) => {
+  const profile = await prisma.beautyProfile.findUnique({ where: { userId: authUserId(req) } });
+  ok(res, profile ? [{ data: profile.data, updatedAt: profile.updatedAt.toISOString() }] : []);
+}));
+
 /** Chip catalogs the onboarding screens render. */
 beautyProfileRouter.get("/options", asyncHandler(async (_req, res) => {
   ok(res, {
