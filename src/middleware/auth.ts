@@ -23,3 +23,9 @@ export function authUserId(req: Request): string {
   if (!req.userId) throw new AppError(401, "Authentication required", "UNAUTHENTICATED");
   return req.userId;
 }
+
+/** Require an ADMIN role (chain after requireAuth). */
+export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
+  if (req.userRole !== "ADMIN") throw new AppError(403, "Admin access required", "FORBIDDEN");
+  next();
+}

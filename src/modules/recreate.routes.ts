@@ -41,6 +41,26 @@ recreateRouter.post("/:id/save", asyncHandler(async (req, res) => {
   ok(res, { saved: true });
 }));
 
+recreateRouter.get("/gallery", asyncHandler(async (_req, res) => {
+  // Public trending recreations — curated later via CMS.
+  ok(res, []);
+}));
+
+recreateRouter.post("/:id/share", asyncHandler(async (req, res) => {
+  const rec = await prisma.recreation.findFirst({ where: { id: req.params.id, userId: authUserId(req) } });
+  if (!rec) throw new AppError(404, "Recreation not found", "NOT_FOUND");
+  ok(res, { url: `https://dollface.app/r/${rec.id}` });
+}));
+
+recreateRouter.post("/:id/report", asyncHandler(async (req, res) => {
+  ok(res, { reported: true });
+}));
+
+recreateRouter.delete("/:id", asyncHandler(async (req, res) => {
+  await prisma.recreation.deleteMany({ where: { id: req.params.id, userId: authUserId(req) } });
+  ok(res, { removed: true });
+}));
+
 recreateRouter.get("/:id", asyncHandler(async (req, res) => {
   const rec = await prisma.recreation.findFirst({ where: { id: req.params.id, userId: authUserId(req) } });
   if (!rec) throw new AppError(404, "Recreation not found", "NOT_FOUND");

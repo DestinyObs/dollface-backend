@@ -1,9 +1,6 @@
-// DollFace API — Prisma schema (Phase 1 / MVP)
-// Models map to dollface-backend/API_SPEC.md §2 and the shapes the app consumes
-// (dollface-mobile/lib/data/types.ts). Catalog entities use stable string ids
-// (so they line up with the seed the app already references); user-owned rows use cuid.
-// Variable/nested structures (steps, shades, tone items, look sections) use Json;
-// flat list fields use native Postgres String[].
+// DollFace API — Prisma schema (full surface, all phases)
+// Catalog entities use stable string ids; user-owned rows use cuid.
+// Variable/nested structures use Json; flat list fields use native String[].
 
 generator client {
   provider = "prisma-client-js"
@@ -35,39 +32,116 @@ enum NotificationType {
   RECREATION
   PROMO
   SYSTEM
+  ORDER
+}
+
+enum EmailTokenType {
+  VERIFY
+  RESET
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum TxnStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum CouponType {
+  PERCENT
+  FIXED
+}
+
+enum TicketStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  CLOSED
 }
 
 // ── Identity ──────────────────────────────────────────────
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         Role     @default(USER)
-  avatarUrl    String?
-  bio          String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  role          Role     @default(USER)
+  avatarUrl     String?
+  bio           String?
+  emailVerified Boolean  @default(false)
+  deactivatedAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   refreshTokens RefreshToken[]
+  emailTokens   EmailToken[]
+  otps          Otp[]
+  mfaSecret     MfaSecret?
+  oauthAccounts OAuthAccount[]
+  devices       Device[]
   beautyProfile BeautyProfile?
   settings      Settings?
+  preferences   Preferences?
+  consents      Consents?
   subscription  Subscription?
   cart          Cart?
   matches       ShadeMatch[]
   scans         Scan[]
   recreations   Recreation[]
   notifications Notification[]
+  notifPref     NotificationPref?
   routines      Routine[]
   tutorialSaves TutorialSave[]
   productSaves  ProductSave[]
   savedLooks    SavedLook[]
   completions   TutorialCompletion[]
   progress      TutorialProgress[]
+  tutorialLikes TutorialLike[]
+  comments      TutorialComment[]
+  achievements  UserAchievement[]
+  brandFollows  BrandFollow[]
+  reviews       Review[]
+  reviewVotes   ReviewVote[]
+  questions     Question[]
+  answers       Answer[]
+  addresses     Address[]
+  orders        Order[]
+  paymentMethods PaymentMethod[]
+  transactions  Transaction[]
+  referral      Referral?
+  referralsMade ReferralRedemption[] @relation("referrer")
+  referralUsed  ReferralRedemption?  @relation("referred")
+  credits       CreditLedger[]
+  wishlists     Wishlist[]
+  shelf         Shelf[]
+  productViews  ProductView[]
+  restockAlerts RestockAlert[]
+  searchLogs    SearchLog[]
+  tickets       SupportTicket[]
+  ticketMsgs    TicketMessage[]
+  feedback      Feedback[]
+  media         MediaAsset[]
+  events        AnalyticsEvent[]
+  dataExports   DataExport[]
 }
 
-// One row per issued refresh token (hashed). Enables rotation + revocation
-// (logout, logout-everywhere) per API_SPEC §3.1.
 model RefreshToken {
   id        String    @id @default(cuid())
   userId    String
@@ -81,12 +155,63 @@ model RefreshToken {
   @@index([userId])
 }
 
+model EmailToken {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String         @unique
+  type      EmailTokenType
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime       @default(now())
+}
+
+model Otp {
+  id        String    @id @default(cuid())
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone     String?
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model MfaSecret {
+  id      String  @id @default(cuid())
+  userId  String  @unique
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secret  String
+  enabled Boolean @default(false)
+}
+
+model OAuthAccount {
+  id         String @id @default(cuid())
+  userId     String
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider   String
+  providerId String
+
+  @@unique([provider, providerId])
+  @@index([userId])
+}
+
+model Device {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  platform   String
+  appVersion String?
+  createdAt  DateTime @default(now())
+}
+
 // ── Account ───────────────────────────────────────────────
 model BeautyProfile {
   id                 String   @id @default(cuid())
   userId             String   @unique
   user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  data               Json     @default("{}") // onboarding selections (goals, tone, undertone, …)
+  data               Json     @default("{}")
   onboardingComplete Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -104,6 +229,45 @@ model Settings {
   storeScans      Boolean @default(true)
 }
 
+model Preferences {
+  id       String @id @default(cuid())
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  language String @default("en")
+  theme    String @default("light")
+  currency String @default("GBP")
+  country  String @default("GB")
+  units    String @default("metric")
+}
+
+model Consents {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketing      Boolean @default(false)
+  dataProcessing Boolean @default(true)
+  cookies        Boolean @default(true)
+}
+
+model NotificationPref {
+  id      String  @id @default(cuid())
+  userId  String  @unique
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matches Boolean @default(true)
+  tutorials Boolean @default(true)
+  promos  Boolean @default(true)
+  orders  Boolean @default(true)
+}
+
+model DataExport {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String   @default("PENDING")
+  url       String?
+  createdAt DateTime @default(now())
+}
+
 model Subscription {
   id       String    @id @default(cuid())
   userId   String    @unique
@@ -113,17 +277,17 @@ model Subscription {
   renewsAt DateTime?
 }
 
-// ── Catalog (global, seeded) ──────────────────────────────
+// ── Catalog ───────────────────────────────────────────────
 model Tutorial {
-  id           String  @id
-  title        String
-  cat          String
-  mins         String
-  level        String
-  views        String
-  img          String
-  description  String
-  steps        Json // TutorialStep[]
+  id            String  @id
+  title         String
+  cat           String
+  mins          String
+  level         String
+  views         String
+  img           String
+  description   String
+  steps         Json
   featured      Boolean @default(false)
   eyebrow       String?
   featuredTitle String?
@@ -134,24 +298,48 @@ model Tutorial {
   saves       TutorialSave[]
   completions TutorialCompletion[]
   progress    TutorialProgress[]
+  likes       TutorialLike[]
+  comments    TutorialComment[]
+}
+
+model Brand {
+  id          String  @id
+  name        String
+  logo        String?
+  description String?
+  order       Int     @default(0)
+
+  products Product[]
+  follows  BrandFollow[]
 }
 
 model Product {
   id          String   @id
   name        String
   brand       String
+  brandId     String?
+  brandRef    Brand?   @relation(fields: [brandId], references: [id])
   category    String
-  priceLabel  String // "£34" (summary)
-  priceAmount Float // 34   (detail / cart)
+  priceLabel  String
+  priceAmount Float
   rating      String
   img         String
   reviewCount String   @default("0 reviews")
   highlights  String[]
   description String   @default("")
-  shades      Json // ProductShade[]
+  shades      Json
+  ingredients String[] @default([])
+  trending    Boolean  @default(false)
+  isNew       Boolean  @default(false)
   order       Int      @default(0)
 
-  saves ProductSave[]
+  saves         ProductSave[]
+  reviews       Review[]
+  questions     Question[]
+  wishlistItems WishlistItem[]
+  shelf         Shelf[]
+  views         ProductView[]
+  restockAlerts RestockAlert[]
 }
 
 model Look {
@@ -200,13 +388,120 @@ model TutorialProgress {
   @@unique([userId, tutorialId])
 }
 
-// ── Shade match / scans / recreations ─────────────────────
+model TutorialLike {
+  id         String   @id @default(cuid())
+  userId     String
+  tutorialId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tutorial   Tutorial @relation(fields: [tutorialId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, tutorialId])
+}
+
+model TutorialComment {
+  id         String   @id @default(cuid())
+  userId     String
+  tutorialId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tutorial   Tutorial @relation(fields: [tutorialId], references: [id], onDelete: Cascade)
+  body       String
+  createdAt  DateTime @default(now())
+
+  @@index([tutorialId])
+}
+
+model Achievement {
+  id          String @id
+  title       String
+  description String
+  icon        String
+  order       Int    @default(0)
+
+  earned UserAchievement[]
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  achievementId String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  earnedAt      DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+}
+
+model BrandFollow {
+  id      String @id @default(cuid())
+  userId  String
+  brandId String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, brandId])
+}
+
+// ── Reviews & Q&A ─────────────────────────────────────────
+model Review {
+  id           String   @id @default(cuid())
+  userId       String
+  productId    String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating       Int
+  title        String?
+  body         String
+  photos       String[]
+  helpfulCount Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  votes ReviewVote[]
+
+  @@index([productId])
+}
+
+model ReviewVote {
+  id       String @id @default(cuid())
+  userId   String
+  reviewId String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reviewId])
+}
+
+model Question {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+
+  answers Answer[]
+
+  @@index([productId])
+}
+
+model Answer {
+  id         String   @id @default(cuid())
+  userId     String
+  questionId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  body       String
+  createdAt  DateTime @default(now())
+}
+
+// ── Shade match / scans / recreations / shelf ─────────────
 model ShadeMatch {
   id             String    @id @default(cuid())
   userId         String
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   kind           MatchKind @default(SELFIE)
-  name           String // headline matched shade (for recent/history list)
+  name           String
   brand          String
   pct            String
   color          String
@@ -214,7 +509,8 @@ model ShadeMatch {
   toneSub        String
   toneHex        String
   toneConfidence String
-  items          Json // MatchResultItem[]
+  items          Json
+  saved          Boolean   @default(false)
   createdAt      DateTime  @default(now())
 
   @@index([userId, createdAt])
@@ -238,17 +534,32 @@ model Recreation {
   status    String   @default("DONE")
   versions  String[]
   aiNote    String
-  sections  Json // RecreateSection[]
+  sections  Json
+  saved     Boolean  @default(false)
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
 }
 
-// ── Commerce: cart + saved ────────────────────────────────
+model Shelf {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  shade     String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId, shade])
+  @@index([userId])
+}
+
+// ── Commerce: cart / saved / wishlist ─────────────────────
 model Cart {
   id     String     @id @default(cuid())
   userId String     @unique
   user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coupon String?
   items  CartItem[]
 }
 
@@ -277,7 +588,6 @@ model ProductSave {
   @@index([userId])
 }
 
-// Looks aren't a catalog entity the user owns — a saved look is a snapshot.
 model SavedLook {
   id        String   @id @default(cuid())
   userId    String
@@ -289,6 +599,179 @@ model SavedLook {
   createdAt DateTime @default(now())
 
   @@unique([userId, lookId])
+  @@index([userId])
+}
+
+model Wishlist {
+  id     String         @id @default(cuid())
+  userId String
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String         @default("Wishlist")
+  items  WishlistItem[]
+
+  @@index([userId])
+}
+
+model WishlistItem {
+  id         String   @id @default(cuid())
+  wishlistId String
+  productId  String
+  wishlist   Wishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([wishlistId, productId])
+}
+
+model ProductView {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model RestockAlert {
+  id        String  @id @default(cuid())
+  userId    String
+  productId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+}
+
+// ── Addresses / orders / payments ─────────────────────────
+model Address {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  line1     String
+  line2     String?
+  city      String
+  region    String?
+  postcode  String
+  country   String  @default("GB")
+  phone     String?
+  isDefault Boolean @default(false)
+
+  orders Order[]
+
+  @@index([userId])
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status     OrderStatus @default(PENDING)
+  subtotal   Float
+  shipping   Float       @default(0)
+  tax        Float       @default(0)
+  total      Float
+  currency   String      @default("GBP")
+  addressId  String?
+  address    Address?    @relation(fields: [addressId], references: [id])
+  trackingNo String?
+  carrier    String?
+  createdAt  DateTime    @default(now())
+
+  items   OrderItem[]
+  returns Return[]
+
+  @@index([userId, createdAt])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  name      String
+  brand     String
+  price     Float
+  shade     String?
+  img       String?
+  qty       Int
+}
+
+model Return {
+  id        String       @id @default(cuid())
+  orderId   String
+  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reason    String
+  status    ReturnStatus @default(REQUESTED)
+  createdAt DateTime     @default(now())
+}
+
+model PaymentMethod {
+  id         String  @id @default(cuid())
+  userId     String
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brand      String
+  last4      String
+  expMonth   Int
+  expYear    Int
+  providerId String?
+  isDefault  Boolean @default(false)
+}
+
+model Transaction {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId   String?
+  amount    Float
+  currency  String    @default("GBP")
+  status    TxnStatus @default(PENDING)
+  kind      String    @default("payment")
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// ── Promos / referrals / credits ──────────────────────────
+model Coupon {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  type      CouponType
+  value     Float
+  active    Boolean    @default(true)
+  expiresAt DateTime?
+}
+
+model Referral {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code   String @unique
+
+  redemptions ReferralRedemption[]
+}
+
+model ReferralRedemption {
+  id           String   @id @default(cuid())
+  referralId   String
+  referral     Referral @relation(fields: [referralId], references: [id], onDelete: Cascade)
+  referrerId   String
+  referrer     User     @relation("referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredId   String   @unique
+  referred     User     @relation("referred", fields: [referredId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+}
+
+model CreditLedger {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Float
+  reason    String
+  createdAt DateTime @default(now())
+
   @@index([userId])
 }
 
@@ -308,13 +791,132 @@ model Notification {
 }
 
 model Routine {
-  id        String   @id @default(cuid())
+  id        String           @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
   time      String
   steps     String[]
-  createdAt DateTime @default(now())
+  createdAt DateTime         @default(now())
+
+  reminders RoutineReminder[]
 
   @@index([userId])
+}
+
+model RoutineReminder {
+  id        String  @id @default(cuid())
+  routineId String
+  routine   Routine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  time      String
+  days      String[]
+}
+
+// ── Discovery ─────────────────────────────────────────────
+model SearchLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  query     String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// ── Content / CMS ─────────────────────────────────────────
+model Article {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  excerpt     String
+  body        String
+  cover       String?
+  publishedAt DateTime  @default(now())
+}
+
+model Banner {
+  id        String  @id @default(cuid())
+  placement String
+  title     String
+  img       String
+  route     String?
+  active    Boolean @default(true)
+  order     Int     @default(0)
+}
+
+model Collection {
+  id    String @id @default(cuid())
+  title String
+  kind  String
+  items Json
+  order Int    @default(0)
+}
+
+// ── Support / feedback ────────────────────────────────────
+model SupportTicket {
+  id        String          @id @default(cuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject   String
+  status    TicketStatus    @default(OPEN)
+  createdAt DateTime        @default(now())
+
+  messages TicketMessage[]
+
+  @@index([userId])
+}
+
+model TicketMessage {
+  id        String        @id @default(cuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  body      String
+  createdAt DateTime      @default(now())
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  kind      String   @default("general")
+  message   String
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+// ── Media / analytics / marketing ─────────────────────────
+model MediaAsset {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  url       String
+  type      String
+  createdAt DateTime @default(now())
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name      String
+  props     Json?
+  ts        DateTime @default(now())
+
+  @@index([name, ts])
+}
+
+model WaitlistEntry {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  source    String?
+  createdAt DateTime @default(now())
+}
+
+model NewsletterSub {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  unsubscribedAt DateTime?
+  createdAt      DateTime  @default(now())
 }

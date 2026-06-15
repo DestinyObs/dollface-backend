@@ -44,3 +44,11 @@ routinesRouter.delete("/:id", asyncHandler(async (req, res) => {
   await prisma.routine.deleteMany({ where: { id: req.params.id, userId: authUserId(req) } });
   ok(res, { removed: true });
 }));
+
+routinesRouter.post("/:id/reminders", asyncHandler(async (req, res) => {
+  const routine = await prisma.routine.findFirst({ where: { id: req.params.id, userId: authUserId(req) } });
+  if (!routine) throw new AppError(404, "Routine not found", "NOT_FOUND");
+  const { time, days } = z.object({ time: z.string().min(1), days: z.array(z.string()).default([]) }).parse(req.body);
+  const reminder = await prisma.routineReminder.create({ data: { routineId: routine.id, time, days } });
+  ok(res, { id: reminder.id, time: reminder.time, days: reminder.days }, 201);
+}));

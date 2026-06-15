@@ -41,3 +41,56 @@ subscriptionRouter.post("/checkout", asyncHandler(async (req, res) => {
   });
   ok(res, { status: "trialing" });
 }));
+
+subscriptionRouter.post("/cancel", asyncHandler(async (req, res) => {
+  await prisma.subscription.update({ where: { userId: authUserId(req) }, data: { status: "Cancelled" } });
+  ok(res, { status: "Cancelled" });
+}));
+
+subscriptionRouter.post("/resume", asyncHandler(async (req, res) => {
+  await prisma.subscription.update({ where: { userId: authUserId(req) }, data: { status: "Active" } });
+  ok(res, { status: "Active" });
+}));
+
+subscriptionRouter.post("/change", asyncHandler(async (req, res) => {
+  const plan = String(req.body?.plan ?? "").toUpperCase() === "PRO" ? "PRO" : "FREE";
+  await prisma.subscription.update({ where: { userId: authUserId(req) }, data: { plan } });
+  ok(res, { plan: plan.toLowerCase() });
+}));
+
+subscriptionRouter.get("/preview", asyncHandler(async (_req, res) => {
+  ok(res, { proration: 0, nextCharge: PRO_PLAN.price, nextChargeAt: new Date(Date.now() + 365 * 86400000).toISOString() });
+}));
+
+subscriptionRouter.post("/restore", asyncHandler(async (req, res) => {
+  await prisma.subscription.upsert({
+    where: { userId: authUserId(req) }, create: { userId: authUserId(req), plan: "PRO", status: "Active" }, update: { plan: "PRO", status: "Active" },
+  });
+  ok(res, { restored: true, plan: "pro" });
+}));
+
+subscriptionRouter.get("/entitlements", asyncHandler(async (req, res) => {
+  const sub = await prisma.subscription.findUnique({ where: { userId: authUserId(req) } });
+  const pro = sub?.plan === "PRO";
+  ok(res, {
+    plan: pro ? "pro" : "free",
+    unlimitedMatches: pro, unlimitedRecreations: pro, fullTutorialLibrary: pro, aiAdvisor: pro, adFree: pro,
+  });
+}));
+
+subscriptionRouter.post("/gift", asyncHandler(async (req, res) => {
+  ok(res, { gifted: true, code: `GIFT-${Math.random().toString(36).slice(2, 8).toUpperCase()}` });
+}));
+
+/** Billing portal + invoices (mounted at /billing). */
+export const billingRouter = Router();
+billingRouter.use(requireAuth);
+
+billingRouter.get("/portal", asyncHandler(async (_req, res) => {
+  ok(res, { url: "https://billing.dollface.app/portal" });
+}));
+
+billingRouter.get("/invoices", asyncHandler(async (req, res) => {
+  const txns = await prisma.transaction.findMany({ where: { userId: authUserId(req), kind: "payment" }, orderBy: { createdAt: "desc" } });
+  ok(res, txns.map((t) => ({ id: t.id, amount: t.amount, currency: t.currency, status: t.status, createdAt: t.createdAt.toISOString(), url: `https://dollface.app/invoices/${t.id}.pdf` })));
+}));

@@ -36,3 +36,24 @@ systemRouter.get("/ready", asyncHandler(async (_req, res) => {
   await prisma.$queryRaw`SELECT 1`;
   ok(res, { status: "ready", db: "up" });
 }));
+
+systemRouter.get("/maintenance", asyncHandler(async (_req, res) => {
+  ok(res, { active: false, message: null });
+}));
+
+systemRouter.get("/locales", asyncHandler(async (_req, res) => {
+  ok(res, [{ code: "en", label: "English" }, { code: "fr", label: "Français" }, { code: "es", label: "Español" }]);
+}));
+
+systemRouter.get("/countries", asyncHandler(async (_req, res) => {
+  ok(res, [
+    { code: "GB", name: "United Kingdom", currency: "GBP" },
+    { code: "US", name: "United States", currency: "USD" },
+    { code: "NG", name: "Nigeria", currency: "NGN" },
+    { code: "FR", name: "France", currency: "EUR" },
+  ]);
+}));
+
+systemRouter.get("/i18n/:locale", asyncHandler(async (req, res) => {
+  ok(res, { locale: req.params.locale, strings: {} });
+}));
