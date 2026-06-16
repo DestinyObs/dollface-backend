@@ -9,9 +9,12 @@ export const presentUser = (u: User) => ({
   id: u.id,
   name: u.name,
   email: u.email,
+  phone: u.phone ?? undefined,
   avatarUrl: u.avatarUrl ?? undefined,
   bio: u.bio ?? undefined,
   role: u.role,
+  emailVerified: u.emailVerified,
+  phoneVerified: u.phoneVerified,
   createdAt: u.createdAt.toISOString(),
 });
 

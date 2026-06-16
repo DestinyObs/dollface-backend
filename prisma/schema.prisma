@@ -81,11 +81,13 @@ model User {
   id            String   @id @default(cuid())
   name          String
   email         String   @unique
+  phone         String?
   passwordHash  String
   role          Role     @default(USER)
   avatarUrl     String?
   bio           String?
   emailVerified Boolean  @default(false)
+  phoneVerified Boolean  @default(false)
   deactivatedAt DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

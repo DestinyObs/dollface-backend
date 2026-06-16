@@ -69,6 +69,22 @@ describe("auth", () => {
     expectOk(await request(app).get("/api/auth/me").set(A()), "me");
     expectOk(await request(app).get(`/api/auth/check-email?email=${email}`), "check-email");
   });
+  it("email verification OTP (register → devCode → verify)", async () => {
+    const reg = await request(app).post("/api/auth/register").send({ name: "OTP", email: uniqueEmail(), phone: "+447700900000", password: "password123" });
+    expectOk(reg, "register");
+    expect(reg.body.data.emailVerificationRequired).toBe(true);
+    expect(reg.body.data.user.phone).toBe("+447700900000");
+    expect(reg.body.data.user.emailVerified).toBe(false);
+    const t = reg.body.data.tokens.accessToken;
+    const code = reg.body.data.devCode;
+    // wrong code rejected
+    const bad = await request(app).post("/api/auth/email/verify").set({ Authorization: `Bearer ${t}` }).send({ code: "000000" });
+    expect(bad.status).toBe(400);
+    // correct code verifies
+    expectOk(await request(app).post("/api/auth/email/verify").set({ Authorization: `Bearer ${t}` }).send({ code }), "verify");
+    // resend issues a new code
+    expectOk(await request(app).post("/api/auth/email/resend").set({ Authorization: `Bearer ${t}` }), "resend");
+  });
   it("forgot / reset / change-password", async () => {
     const email = uniqueEmail();
     await request(app).post("/api/auth/register").send({ name: "PW", email, password: "password123" });
