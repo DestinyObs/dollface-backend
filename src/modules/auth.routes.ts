@@ -9,6 +9,7 @@ import { hashPassword, verifyPassword } from "../lib/password.js";
 import { signAccessToken, verifyRefreshToken, hashToken } from "../lib/jwt.js";
 import { issueTokens } from "../lib/session.js";
 import { presentUser } from "../lib/presenters.js";
+import { issueEmailOtp, verifyEmailOtp, exposeDevCode } from "../lib/emailOtp.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import { env } from "../env.js";
@@ -28,11 +29,12 @@ async function ensureRole(user: { id: string; email: string; role: "USER" | "ADM
 const registerSchema = z.object({
   name: z.string().min(2).max(80),
   email: z.string().email(),
+  phone: z.string().min(6).max(20).optional(),
   password: z.string().min(8).max(128),
 });
 
 authRouter.post("/register", asyncHandler(async (req, res) => {
-  const { name, email, password } = registerSchema.parse(req.body);
+  const { name, email, phone, password } = registerSchema.parse(req.body);
   const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   if (existing) throw new AppError(409, "An account with this email already exists.", "EMAIL_TAKEN");
 
@@ -40,6 +42,7 @@ authRouter.post("/register", asyncHandler(async (req, res) => {
     data: {
       name,
       email: email.toLowerCase(),
+      phone: phone ?? null,
       passwordHash: await hashPassword(password),
       role: env.adminEmails.includes(email.toLowerCase()) ? "ADMIN" : "USER",
       subscription: { create: {} },
@@ -54,7 +57,25 @@ authRouter.post("/register", asyncHandler(async (req, res) => {
   });
 
   const tokens = await issueTokens(user, req);
-  ok(res, { user: presentUser(user), tokens }, 201);
+  // Email a 6-digit verification code; the app shows an OTP screen next.
+  const code = await issueEmailOtp(user.id, user.email);
+  ok(res, { user: presentUser(user), tokens, emailVerificationRequired: true, ...exposeDevCode(code) }, 201);
+}));
+
+/** Verify the emailed 6-digit code → marks the account's email verified. */
+authRouter.post("/email/verify", requireAuth, asyncHandler(async (req, res) => {
+  const code = String(req.body?.code ?? "").trim();
+  if (!/^\d{6}$/.test(code)) throw new AppError(400, "Enter the 6-digit code", "BAD_CODE");
+  const verified = await verifyEmailOtp(authUserId(req), code);
+  if (!verified) throw new AppError(400, "That code is invalid or expired", "OTP_INVALID");
+  ok(res, { verified: true });
+}));
+
+/** Resend a fresh verification code to the authenticated user's email. */
+authRouter.post("/email/resend", requireAuth, asyncHandler(async (req, res) => {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: authUserId(req) } });
+  const code = await issueEmailOtp(user.id, user.email);
+  ok(res, { sent: true, ...exposeDevCode(code) });
 }));
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
