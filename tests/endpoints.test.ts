@@ -276,6 +276,13 @@ describe("commerce: cart / saved / wishlist / addresses / checkout / orders / pa
     expectOk(await request(app).post(`/api/orders/${orderId}/reorder`).set(A()), "reorder");
     expectOk(await request(app).post(`/api/orders/${orderId}/cancel`).set(A()), "cancel");
   });
+  it("rejects a bogus addressId with 400 (not a 500 FK crash)", async () => {
+    // refill the bag, then check out against an address that does not exist
+    await request(app).post("/api/cart/items").set(A()).send({ productId: "1", name: "Pro Filtr", brand: "Fenty", price: 34, qty: 1 });
+    const res = await request(app).post("/api/orders").set(A()).send({ addressId: "does-not-exist" });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("BAD_ADDRESS");
+  });
   it("payments", async () => {
     const m = await request(app).post("/api/payments/methods").set(A()).send({ last4: "4242", expMonth: 12, expYear: 2030 });
     expectOk(m, "add method"); methodId = m.body.data.id;
