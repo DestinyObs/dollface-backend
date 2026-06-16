@@ -1,23 +1,30 @@
 name: Keep Render awake
 
-# Render free web services sleep after ~15 min idle. This pings /health on a
-# schedule so the API stays warm for testers. (GitHub cron is best-effort and
-# may be delayed a few minutes under load — the interval has margin for that.)
+# Render free web services sleep after ~15 min idle. GitHub cron can't fire every
+# 2 min, so each run self-loops: it pings the API + web every 2 minutes for ~12
+# minutes, and is scheduled every 10 minutes so runs overlap with no gap.
+# (Public repo → free, unlimited Actions minutes.)
 on:
   schedule:
-    - cron: "*/10 * * * *" # every 10 minutes
+    - cron: "*/10 * * * *"
   workflow_dispatch: {}
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Ping health endpoint
+      - name: Ping every 2 minutes
         run: |
-          for i in 1 2 3; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 https://dollface-api.onrender.com/health || echo 000)
-            echo "attempt $i → HTTP $code"
-            [ "$code" = "200" ] && exit 0
-            sleep 20
+          API=https://dollface-api.onrender.com/health
+          WEB=https://dollface-web.onrender.com/
+          for i in $(seq 1 6); do
+            a=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "$API" || echo 000)
+            w=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "$WEB" || echo 000)
+            echo "$(date -u +%H:%M:%S) ping $i/6 → api:$a web:$w"
+            if [ "$i" -lt 6 ]; then sleep 120; fi
           done
-          echo "health check did not return 200 (service may be cold-starting)"
