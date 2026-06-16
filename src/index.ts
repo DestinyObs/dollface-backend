@@ -2,7 +2,9 @@ import { createApp } from "./app.js";
 import { env } from "./env.js";
 import { prisma } from "./db.js";
 import { logger } from "./lib/logger.js";
+import { initSentry } from "./lib/sentry.js";
 
+await initSentry();
 const app = createApp();
 
 const server = app.listen(env.PORT, () => {
