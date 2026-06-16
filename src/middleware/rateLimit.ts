@@ -1,7 +1,9 @@
 import rateLimit from "express-rate-limit";
 import { env } from "../env.js";
 
-const skip = () => env.NODE_ENV === "test";
+// Skip in automated tests, and behind an explicit opt-out for local E2E /
+// endpoint-transcript runs that fire many requests in a tight window.
+const skip = () => env.NODE_ENV === "test" || process.env.DISABLE_RATE_LIMIT === "1";
 
 /** Tight limit on auth endpoints (brute-force protection). */
 export const authLimiter = rateLimit({

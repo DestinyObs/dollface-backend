@@ -55,6 +55,12 @@ ordersRouter.use(requireAuth);
 ordersRouter.post("/", asyncHandler(async (req, res) => {
   const userId = authUserId(req);
   const addressId = req.body?.addressId ? String(req.body.addressId) : null;
+  // Validate the address belongs to this user before referencing it (avoids a
+  // raw FK-violation 500 on a bogus/foreign addressId).
+  if (addressId) {
+    const address = await prisma.address.findFirst({ where: { id: addressId, userId } });
+    if (!address) throw new AppError(400, "Invalid delivery address", "BAD_ADDRESS");
+  }
   const { cart, subtotal, shipping, tax, total } = await cartTotals(userId);
   if (!cart.items.length) throw new AppError(400, "Your bag is empty", "EMPTY_CART");
 

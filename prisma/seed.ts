@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import argon2 from "argon2";
 
 const prisma = new PrismaClient();
 
@@ -128,6 +129,19 @@ async function main() {
     where: { slug: "undertones-101" },
     create: { slug: "undertones-101", title: "Undertones 101", excerpt: "Cool, warm or neutral — and why it matters.", body: "Your undertone is the subtle hue beneath your skin...", cover: img(PHOTO.modelSoft, 800, 500) },
     update: {},
+  });
+
+  // Known accounts for testing/ops (idempotent). Password: password123
+  const pw = await argon2.hash("password123");
+  await prisma.user.upsert({
+    where: { email: "admin@dollface.app" },
+    create: { email: "admin@dollface.app", name: "DollFace Admin", passwordHash: pw, role: "ADMIN", emailVerified: true },
+    update: { role: "ADMIN", passwordHash: pw },
+  });
+  await prisma.user.upsert({
+    where: { email: "demo@dollface.app" },
+    create: { email: "demo@dollface.app", name: "Demo User", passwordHash: pw, role: "USER", emailVerified: true },
+    update: { passwordHash: pw },
   });
 
   const counts = {

@@ -21,7 +21,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "transcript": "node scripts/transcript.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
