@@ -63,6 +63,33 @@ async function visionJSON<T>(image: ImageInput, system: string, instruction: str
   throw lastErr ?? new Error("AI_ALL_KEYS_FAILED");
 }
 
+/** Run a text-only prompt, returning parsed JSON, failing over across keys. */
+async function textJSON<T>(system: string, instruction: string): Promise<T> {
+  if (!clients.length) throw new Error("AI_NOT_CONFIGURED");
+  let lastErr: unknown;
+  for (let i = 0; i < clients.length; i++) {
+    try {
+      const msg = await clients[i].messages.create({
+        model: env.ANTHROPIC_VISION_MODEL,
+        max_tokens: 1200,
+        system,
+        messages: [{ role: "user", content: `${instruction}\n\nRespond with ONLY valid minified JSON — no prose, no markdown fences.` }],
+      });
+      const text = msg.content.filter((b) => b.type === "text").map((b: any) => b.text).join("").trim();
+      return parseJSON<T>(text);
+    } catch (err: any) {
+      lastErr = err;
+      const status = err?.status ?? err?.response?.status;
+      if (status && RETRYABLE.has(status) && i < clients.length - 1) {
+        logger.warn({ status, key: `key#${i + 1}/${clients.length}` }, "AI key failed, failing over");
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr ?? new Error("AI_ALL_KEYS_FAILED");
+}
+
 /** Tolerant JSON parse — strips accidental markdown fences / leading text. */
 function parseJSON<T>(raw: string): T {
   let s = raw.trim();
@@ -153,5 +180,26 @@ export async function analyzeRecreation(image: ImageInput): Promise<RecreationAn
   } catch (err: any) {
     logger.error({ err: err?.message }, "analyzeRecreation failed — using sample fallback");
     return { ...SAMPLE_RECREATION, source: "sample" };
+  }
+}
+
+// ── Manual shade entry → cross-brand match (text only) ──────────────────────
+
+export async function analyzeManualShade(input: { shade: string; brand?: string; category: string }): Promise<ShadeAnalysis> {
+  if (!aiConfigured()) {
+    return { tone: SAMPLE_TONE, headline: SAMPLE_MATCH_HEADLINE, items: SAMPLE_MATCH_ITEMS, source: "sample" };
+  }
+  const instruction = `A user owns ${input.brand ? `${input.brand} ` : ""}"${input.shade}" (${input.category}). ` +
+    `Find the closest cross-brand equivalents and return JSON exactly matching this shape:\n` +
+    `{ "tone": { "label": string, "hex": string, "confidence": string },\n` +
+    `  "headline": { "name": string, "brand": string, "pct": string, "color": string },\n` +
+    `  "items": [ { "category": "Foundation"|"Concealer"|"Powder", "confidence": "High"|"Medium", "matchedShade": string, "brand": string, "product": string, "hex": string, "reason": string, "alternatives": [ { "brand": string, "product": string, "shade": string, "hex": string, "price": string } ] } ] }\n` +
+    `Infer the skin tone the entered shade implies, then give equivalents from at least 2 other brands.`;
+  try {
+    const r = await textJSON<Omit<ShadeAnalysis, "source">>(SHADE_SYSTEM, instruction);
+    return { ...r, source: "ai" };
+  } catch (err: any) {
+    logger.error({ err: err?.message }, "analyzeManualShade failed — using sample fallback");
+    return { tone: SAMPLE_TONE, headline: SAMPLE_MATCH_HEADLINE, items: SAMPLE_MATCH_ITEMS, source: "sample" };
   }
 }

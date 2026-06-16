@@ -8,8 +8,7 @@ import { presentMatchResult, presentRecentMatch, presentMatchHistoryItem, presen
 import { requireAuth, authUserId } from "../middleware/auth.js";
 import { upload } from "../middleware/upload.js";
 import { saveUpload } from "../providers/storage.js";
-import { SAMPLE_TONE, SAMPLE_MATCH_ITEMS, SAMPLE_MATCH_HEADLINE } from "../lib/samples.js";
-import { analyzeSelfie } from "../providers/ai.js";
+import { analyzeSelfie, analyzeManualShade } from "../providers/ai.js";
 
 export const matchRouter = Router();
 
@@ -60,16 +59,16 @@ const manualSchema = z.object({ shade: z.string().min(1), brand: z.string().opti
 /** Manual shade entry → cross-brand match. */
 matchRouter.post("/manual", requireAuth, asyncHandler(async (req, res) => {
   const userId = authUserId(req);
-  const { shade, brand } = manualSchema.parse(req.body);
+  const { shade, brand, category } = manualSchema.parse(req.body);
+  const analysis = await analyzeManualShade({ shade, brand, category });
   const match = await prisma.shadeMatch.create({
     data: {
-      userId, kind: "MANUAL",
-      name: shade, brand: brand ?? "Cross-brand", pct: "90%", color: SAMPLE_TONE.hex,
-      toneLabel: SAMPLE_TONE.label, toneSub: "Based on your shade entry", toneHex: SAMPLE_TONE.hex, toneConfidence: SAMPLE_TONE.confidence,
-      items: SAMPLE_MATCH_ITEMS as unknown as Prisma.InputJsonValue,
+      userId, kind: "MANUAL", ...analysis.headline,
+      toneLabel: analysis.tone.label, toneSub: "Based on your shade entry", toneHex: analysis.tone.hex, toneConfidence: analysis.tone.confidence,
+      items: analysis.items as unknown as Prisma.InputJsonValue,
     },
   });
-  ok(res, presentMatchResult(match), 201);
+  ok(res, { ...presentMatchResult(match), source: analysis.source }, 201);
 }));
 
 matchRouter.get("/selfie/:jobId/status", requireAuth, asyncHandler(async (req, res) => {
