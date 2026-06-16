@@ -11,6 +11,12 @@ import { createApp } from "../src/app.js";
 const app = createApp();
 const uniqueEmail = () => `ep_${Date.now()}_${Math.random().toString(36).slice(2, 7)}@dollface.test`;
 
+// Minimal valid 1x1 JPEG for multipart upload endpoints (selfie / recreate).
+const TINY_JPEG = Buffer.from(
+  "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wgALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAAv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAT8AH//Z",
+  "base64",
+);
+
 let token = "";
 let refreshToken = "";
 let adminToken = "";
@@ -193,7 +199,7 @@ describe("beauty engine: match / recreate / shelf", () => {
     expectOk(await request(app).get("/api/match/categories"), "categories");
     const m = await request(app).post("/api/match/manual").set(A()).send({ shade: "NC40", category: "Foundation" });
     expectOk(m, "manual"); matchId = m.body.data.id;
-    expectOk(await request(app).post("/api/match/selfie").set(A()), "selfie");
+    expectOk(await request(app).post("/api/match/selfie").set(A()).attach("selfie", TINY_JPEG, "selfie.jpg"), "selfie");
     expectOk(await request(app).get("/api/match/recent").set(A()), "recent");
     expectOk(await request(app).get("/api/match/history").set(A()), "history");
     expectOk(await request(app).get("/api/match/scans").set(A()), "scans");
@@ -205,7 +211,7 @@ describe("beauty engine: match / recreate / shelf", () => {
     expectOk(await request(app).delete(`/api/match/${matchId}`).set(A()), "delete");
   });
   it("recreate", async () => {
-    const r = await request(app).post("/api/recreate/upload").set(A());
+    const r = await request(app).post("/api/recreate/upload").set(A()).attach("image", TINY_JPEG, "look.jpg");
     expectOk(r, "upload"); recId = r.body.data.id;
     expectOk(await request(app).get("/api/recreate/history").set(A()), "history");
     expectOk(await request(app).get("/api/recreate/gallery").set(A()), "gallery");

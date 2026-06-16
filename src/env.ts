@@ -24,6 +24,13 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   APPLE_CLIENT_ID: z.string().optional(),
   ADMIN_EMAILS: z.string().default(""),
+
+  // ── AI vision (shade match + look recreation) ──
+  // One or more Anthropic API keys, comma-separated, tried in order on failure
+  // (rate-limit / quota / auth) so a dead key never takes the feature down.
+  ANTHROPIC_API_KEYS: z.string().default(""),
+  // Cheap, vision-capable default; override per environment if needed.
+  ANTHROPIC_VISION_MODEL: z.string().default("claude-haiku-4-5-20251001"),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -34,11 +41,14 @@ if (!parsed.success) {
 }
 const e = parsed.data;
 
+const anthropicKeys = e.ANTHROPIC_API_KEYS.split(",").map((s) => s.trim()).filter(Boolean);
+
 export const env = {
   ...e,
   isProd: e.NODE_ENV === "production",
   corsOrigins: e.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean),
   adminEmails: e.ADMIN_EMAILS.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
+  anthropicKeys,
   /** Which external providers are wired with real credentials. */
   providers: {
     payments: !!e.STRIPE_SECRET_KEY,
@@ -47,5 +57,6 @@ export const env = {
     storage: !!(e.CLOUDINARY_URL || e.AWS_S3_BUCKET),
     googleAuth: !!e.GOOGLE_CLIENT_ID,
     appleAuth: !!e.APPLE_CLIENT_ID,
+    ai: anthropicKeys.length > 0,
   },
 };

@@ -9,6 +9,7 @@ import { requireAuth, authUserId } from "../middleware/auth.js";
 import { upload } from "../middleware/upload.js";
 import { saveUpload } from "../providers/storage.js";
 import { SAMPLE_TONE, SAMPLE_MATCH_ITEMS, SAMPLE_MATCH_HEADLINE } from "../lib/samples.js";
+import { analyzeSelfie } from "../providers/ai.js";
 
 export const matchRouter = Router();
 
@@ -36,19 +37,22 @@ matchRouter.get("/scans", requireAuth, asyncHandler(async (req, res) => {
 /** Selfie scan → records a scan + a shade match, returns the result. */
 matchRouter.post("/selfie", requireAuth, upload.single("selfie"), asyncHandler(async (req, res) => {
   const userId = authUserId(req);
-  if (req.file) await prisma.mediaAsset.create({ data: { userId, url: await saveUpload(req.file.buffer, req.file.mimetype), type: "selfie" } }).catch(() => {});
-  const items = SAMPLE_MATCH_ITEMS as unknown as Prisma.InputJsonValue;
+  if (!req.file) throw new AppError(400, "A selfie image is required", "NO_IMAGE");
+  // Persist the upload, then run real AI shade analysis (falls back to a sample
+  // analysis when no Anthropic key is configured — see providers/ai.ts).
+  await prisma.mediaAsset.create({ data: { userId, url: await saveUpload(req.file.buffer, req.file.mimetype), type: "selfie" } }).catch(() => {});
+  const analysis = await analyzeSelfie({ buffer: req.file.buffer, mimetype: req.file.mimetype });
   const [, match] = await prisma.$transaction([
-    prisma.scan.create({ data: { userId, tone: SAMPLE_TONE.label, confidence: "High" } }),
+    prisma.scan.create({ data: { userId, tone: analysis.tone.label, confidence: "High" } }),
     prisma.shadeMatch.create({
       data: {
-        userId, kind: "SELFIE", ...SAMPLE_MATCH_HEADLINE,
-        toneLabel: SAMPLE_TONE.label, toneSub: "Based on your selfie analysis", toneHex: SAMPLE_TONE.hex, toneConfidence: SAMPLE_TONE.confidence,
-        items,
+        userId, kind: "SELFIE", ...analysis.headline,
+        toneLabel: analysis.tone.label, toneSub: "Based on your selfie analysis", toneHex: analysis.tone.hex, toneConfidence: analysis.tone.confidence,
+        items: analysis.items as unknown as Prisma.InputJsonValue,
       },
     }),
   ]);
-  ok(res, presentMatchResult(match), 201);
+  ok(res, { ...presentMatchResult(match), source: analysis.source }, 201);
 }));
 
 const manualSchema = z.object({ shade: z.string().min(1), brand: z.string().optional(), category: z.string().min(1) });
