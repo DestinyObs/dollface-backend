@@ -7,24 +7,27 @@ import { presentRecreation } from "../lib/presenters.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
 import { upload } from "../middleware/upload.js";
 import { saveUpload } from "../providers/storage.js";
-import { SAMPLE_RECREATION } from "../lib/samples.js";
+import { analyzeRecreation } from "../providers/ai.js";
 
 export const recreateRouter = Router();
 recreateRouter.use(requireAuth);
 
-/** Upload inspiration → kick off (synthetic) analysis, persist the breakdown. */
+/** Upload inspiration → run real AI look analysis, persist the breakdown. */
 recreateRouter.post("/upload", upload.single("image"), asyncHandler(async (req, res) => {
-  if (req.file) await prisma.mediaAsset.create({ data: { userId: authUserId(req), url: await saveUpload(req.file.buffer, req.file.mimetype), type: "inspiration" } }).catch(() => {});
+  const userId = authUserId(req);
+  if (!req.file) throw new AppError(400, "An inspiration image is required", "NO_IMAGE");
+  await prisma.mediaAsset.create({ data: { userId, url: await saveUpload(req.file.buffer, req.file.mimetype), type: "inspiration" } }).catch(() => {});
+  const analysis = await analyzeRecreation({ buffer: req.file.buffer, mimetype: req.file.mimetype });
   const rec = await prisma.recreation.create({
     data: {
-      userId: authUserId(req),
+      userId,
       status: "DONE",
-      versions: SAMPLE_RECREATION.versions,
-      aiNote: SAMPLE_RECREATION.aiNote,
-      sections: SAMPLE_RECREATION.sections as unknown as Prisma.InputJsonValue,
+      versions: analysis.versions,
+      aiNote: analysis.aiNote,
+      sections: analysis.sections as unknown as Prisma.InputJsonValue,
     },
   });
-  ok(res, { id: rec.id, status: "PROCESSING" }, 201);
+  ok(res, { id: rec.id, status: "DONE", source: analysis.source }, 201);
 }));
 
 recreateRouter.get("/history", asyncHandler(async (req, res) => {
