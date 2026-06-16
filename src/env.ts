@@ -26,6 +26,8 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   APPLE_CLIENT_ID: z.string().optional(),
   ADMIN_EMAILS: z.string().default(""),
+  // Error tracking (Sentry) — real capture when set.
+  SENTRY_DSN: z.string().optional(),
 
   // ── AI vision (shade match + look recreation) ──
   // One or more Anthropic API keys, comma-separated, tried in order on failure
@@ -60,5 +62,6 @@ export const env = {
     googleAuth: !!e.GOOGLE_CLIENT_ID,
     appleAuth: !!e.APPLE_CLIENT_ID,
     ai: anthropicKeys.length > 0,
+    errorTracking: !!e.SENTRY_DSN,
   },
 };
