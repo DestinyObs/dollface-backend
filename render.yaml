@@ -1,12 +1,14 @@
-# Render blueprint — one-click deploy of the API + managed Postgres.
-# Create a Render account, "New → Blueprint", point it at this repo.
-# Then set PUBLIC_URL (the service URL) and CORS_ORIGINS in the dashboard.
+# Render blueprint — free-tier deploy of the API + managed Postgres.
+# NOTE: the live service was created via the Render API/CLI; this file documents
+# the equivalent infra. Build installs dev deps (NODE_ENV=production otherwise
+# skips the @types/* and tsx needed to build + seed).
 services:
   - type: web
     name: dollface-api
     runtime: node
-    plan: starter
-    buildCommand: npm install && npm run build
+    plan: free
+    region: oregon
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npx prisma migrate deploy && npm run seed && npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -22,14 +24,24 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: PUBLIC_URL
-        sync: false # set to the deployed service URL
+        value: https://dollface-api.onrender.com
       - key: CORS_ORIGINS
-        sync: false # set to your web + app origins
+        value: "*"
       - key: ADMIN_EMAILS
         sync: false
+      # Test deployment: show the email OTP code in the API response so testers
+      # without an inbox can verify. Remove when RESEND_API_KEY is configured.
+      - key: EXPOSE_OTP
+        value: "1"
+      # Real verification emails when set (Resend). Optional.
+      # - key: RESEND_API_KEY
+      #   sync: false
+      # - key: EMAIL_FROM
+      #   value: DollFace <no-reply@yourdomain>
 
 databases:
   - name: dollface-db
-    plan: starter
+    plan: free
+    region: oregon
     databaseName: dollface
     user: dollface

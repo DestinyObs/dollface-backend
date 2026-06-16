@@ -41,5 +41,10 @@ export async function verifyEmailOtp(userId: string, code: string): Promise<bool
   return true;
 }
 
-/** Expose the dev code only outside production (mirrors the password-reset devToken). */
-export const exposeDevCode = (code: string) => (env.isProd ? {} : { devCode: code });
+/**
+ * Expose the code in the response outside production, or in any environment when
+ * EXPOSE_OTP=1 (for shared test deployments where testers have no inbox). Real
+ * production with email configured should leave EXPOSE_OTP unset.
+ */
+export const exposeDevCode = (code: string) =>
+  (!env.isProd || env.EXPOSE_OTP === "1") ? { devCode: code } : {};

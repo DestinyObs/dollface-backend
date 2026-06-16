@@ -28,6 +28,9 @@ const schema = z.object({
   ADMIN_EMAILS: z.string().default(""),
   // Error tracking (Sentry) — real capture when set.
   SENTRY_DSN: z.string().optional(),
+  // Expose the email OTP code in API responses even in production. Intended for
+  // shared TEST deployments where testers have no inbox; leave unset in real prod.
+  EXPOSE_OTP: z.string().optional(),
 
   // ── AI vision (shade match + look recreation) ──
   // One or more Anthropic API keys, comma-separated, tried in order on failure
