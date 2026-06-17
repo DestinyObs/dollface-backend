@@ -1,6 +1,7 @@
 import { mounts } from "../routes.js";
 import { env } from "../env.js";
 import { ENRICH } from "./enrich.js";
+import { DOMAIN_SCHEMAS, RESPONSE_SCHEMAS, dataSchema } from "./schemas.js";
 
 /* Express layer typing is loose; introspect the stack pragmatically. */
 interface ExpressLayer {
@@ -62,10 +63,14 @@ export function buildOpenApiSpec() {
             }
           : {};
 
-        // Real example response where documented.
-        const okResponse = enrich?.responseExample
-          ? { description: "Success", content: { "application/json": { schema: { $ref: "#/components/schemas/Envelope" }, example: enrich.responseExample } } }
-          : { description: "Success", content: { "application/json": { schema: { $ref: "#/components/schemas/Envelope" } } } };
+        // Typed response: envelope with a `data` schema where the endpoint is mapped.
+        const respSpec = RESPONSE_SCHEMAS[`${M} ${oaPath}`];
+        const okSchema = respSpec
+          ? { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: "object", properties: { data: dataSchema(respSpec) } }] }
+          : { $ref: "#/components/schemas/Envelope" };
+        const okContent: Record<string, unknown> = { schema: okSchema };
+        if (enrich?.responseExample) okContent.example = enrich.responseExample;
+        const okResponse = { description: "Success", content: { "application/json": okContent } };
 
         paths[oaPath] ??= {};
         paths[oaPath][method] = {
@@ -102,34 +107,7 @@ export function buildOpenApiSpec() {
       securitySchemes: {
         bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       },
-      schemas: {
-        Envelope: {
-          type: "object",
-          properties: { success: { type: "boolean", example: true }, data: {} },
-          required: ["success"],
-        },
-        Error: {
-          type: "object",
-          properties: {
-            success: { type: "boolean", example: false },
-            message: { type: "string" },
-            code: { type: "string" },
-            errors: { type: "object", additionalProperties: { type: "string" } },
-          },
-        },
-        Tokens: {
-          type: "object",
-          properties: { accessToken: { type: "string" }, refreshToken: { type: "string" } },
-        },
-        User: {
-          type: "object",
-          properties: {
-            id: { type: "string" }, name: { type: "string" }, email: { type: "string" },
-            avatarUrl: { type: "string", nullable: true }, role: { type: "string", enum: ["USER", "ADMIN"] },
-            createdAt: { type: "string", format: "date-time" },
-          },
-        },
-      },
+      schemas: DOMAIN_SCHEMAS,
     },
   };
 }
