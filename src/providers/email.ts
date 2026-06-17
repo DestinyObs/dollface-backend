@@ -31,8 +31,8 @@ async function getSmtp() {
   return smtpTransport;
 }
 
-export async function sendEmail(to: string, subject: string, body: string): Promise<void> {
-  const html = `<div style="font-family:system-ui,Arial,sans-serif;line-height:1.5;color:#2b2b2b">${body.replace(/\n/g, "<br/>")}</div>`;
+export async function sendEmail(to: string, subject: string, body: string, htmlOverride?: string): Promise<void> {
+  const html = htmlOverride ?? `<div style="font-family:system-ui,Arial,sans-serif;line-height:1.5;color:#2b2b2b">${body.replace(/\n/g, "<br/>")}</div>`;
   try {
     const resend = await getResend();
     if (resend) {
