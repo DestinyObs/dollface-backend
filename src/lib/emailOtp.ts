@@ -15,37 +15,54 @@ function genCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-/** Branded HTML email for the 6-digit verification code. */
-function verificationEmailHtml(code: string): string {
-  const spaced = code.split("").join("&nbsp;&nbsp;");
-  return `<!doctype html><html><body style="margin:0;background:#FAF7F5;padding:0">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FAF7F5;padding:32px 0">
-    <tr><td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#FFFFFF;border-radius:20px;overflow:hidden;box-shadow:0 8px 30px rgba(117,50,72,0.08)">
-        <tr><td style="background:linear-gradient(135deg,#2D0F1A,#753248);padding:32px 32px 26px">
-          <div style="font-family:Georgia,'Times New Roman',serif;font-size:26px;font-weight:700;color:#FFFFFF;letter-spacing:0.5px">DollFace</div>
-          <div style="font-family:Arial,sans-serif;font-size:13px;color:rgba(255,255,255,0.75);margin-top:4px">Beauty, personalised for you</div>
+/**
+ * Branded, email-client-safe verification email. Table-based layout, inline
+ * styles, solid colours (no gradients — they break in Gmail/Outlook), and the
+ * code shown as individual digit boxes so it never wraps or clips.
+ */
+export function verificationEmailHtml(code: string): string {
+  const font = "-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+  const digits = code
+    .split("")
+    .map(
+      (d) =>
+        `<td align="center" valign="middle" style="width:46px;height:58px;background-color:#f7eef2;border:1px solid #ecdfe6;border-radius:10px;font-family:${font};font-size:26px;font-weight:700;color:#753248;">${d}</td>` +
+        `<td style="width:8px;font-size:0;line-height:0;">&nbsp;</td>`,
+    )
+    .join("")
+    .replace(/<td style="width:8px;[^>]*>&nbsp;<\/td>$/, "");
+
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<title>Verify your email</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4eef1;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4eef1;">
+    <tr><td align="center" style="padding:40px 16px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid #ece3e7;border-radius:16px;">
+        <tr><td align="center" style="background-color:#753248;border-radius:16px 16px 0 0;padding:30px 32px;">
+          <span style="font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:bold;color:#ffffff;letter-spacing:0.5px;">DollFace</span>
         </td></tr>
-        <tr><td style="padding:34px 32px 8px">
-          <div style="font-family:Georgia,serif;font-size:21px;color:#1F1A1C;font-weight:700">Confirm your email</div>
-          <div style="font-family:Arial,sans-serif;font-size:14px;color:#6b5e63;line-height:1.6;margin-top:10px">
-            Enter this 6-digit code in the app to verify your account. It expires in 10 minutes.
-          </div>
+        <tr><td style="padding:40px 44px 6px 44px;font-family:${font};">
+          <h1 style="margin:0 0 12px 0;font-size:20px;line-height:28px;color:#1f1a1c;font-weight:700;">Verify your email address</h1>
+          <p style="margin:0;font-size:15px;line-height:24px;color:#6b5e63;">Enter the code below in the DollFace app to finish creating your account. This code expires in 10 minutes.</p>
         </td></tr>
-        <tr><td style="padding:22px 32px 6px" align="center">
-          <div style="font-family:'Courier New',monospace;font-size:34px;font-weight:700;letter-spacing:6px;color:#753248;background:#F5EAEF;border-radius:14px;padding:18px 10px;display:inline-block;min-width:240px">${spaced}</div>
+        <tr><td align="center" style="padding:28px 44px 8px 44px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>${digits}</tr></table>
         </td></tr>
-        <tr><td style="padding:18px 32px 34px">
-          <div style="font-family:Arial,sans-serif;font-size:12.5px;color:#9a8d92;line-height:1.6">
-            If you didn't create a DollFace account, you can safely ignore this email — no account will be created without this code.
-          </div>
+        <tr><td style="padding:14px 44px 40px 44px;font-family:${font};">
+          <p style="margin:0;font-size:13px;line-height:20px;color:#9a8d92;">Didn't request this? You can safely ignore this email — no account is created without this code.</p>
         </td></tr>
-        <tr><td style="background:#FAF7F5;padding:18px 32px;text-align:center">
-          <div style="font-family:Arial,sans-serif;font-size:11.5px;color:#b3a7ac">© DollFace · Beauty, personalised for you</div>
+        <tr><td align="center" style="background-color:#faf7f5;border-radius:0 0 16px 16px;padding:24px 44px;font-family:${font};">
+          <p style="margin:0;font-size:12px;line-height:18px;color:#b3a7ac;">DollFace &middot; Beauty, personalised for you</p>
         </td></tr>
       </table>
     </td></tr>
-  </table></body></html>`;
+  </table>
+</body></html>`;
 }
 
 /** Issue + email a fresh verification code. Returns the code (for dev/testing). */
