@@ -10,6 +10,7 @@ import { signAccessToken, verifyRefreshToken, hashToken } from "../lib/jwt.js";
 import { issueTokens } from "../lib/session.js";
 import { presentUser } from "../lib/presenters.js";
 import { issueEmailOtp, verifyEmailOtp, exposeDevCode } from "../lib/emailOtp.js";
+import { passwordResetEmail } from "../lib/emailTemplates.js";
 import { requireAuth, authUserId } from "../middleware/auth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import { env } from "../env.js";
@@ -135,7 +136,9 @@ authRouter.post("/forgot-password", asyncHandler(async (req, res) => {
   if (user) {
     const token = crypto.randomBytes(24).toString("hex");
     await prisma.emailToken.create({ data: { userId: user.id, token, type: "RESET", expiresAt: new Date(Date.now() + 3600000) } });
-    await sendEmail(user.email, "Reset your DollFace password", `Reset code: ${token}\nOpen the app: dollface://reset-password?token=${token}`);
+    const deepLink = `dollface://reset-password?token=${token}`;
+    const tpl = passwordResetEmail(token, deepLink);
+    await sendEmail(user.email, tpl.subject, tpl.text, tpl.html);
     // Respond generically (never leak account existence); expose the token only
     // in non-production so dev/tests can complete the flow without inbox access.
     if (!env.isProd) return ok(res, { message: "If that email exists, a reset link has been sent.", devToken: token });

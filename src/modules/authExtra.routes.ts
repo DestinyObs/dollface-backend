@@ -12,6 +12,8 @@ import { requireAuth, authUserId } from "../middleware/auth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import { sendEmail } from "../providers/email.js";
 import { verifyOAuthToken } from "../providers/oauth.js";
+import { issueEmailOtp } from "../lib/emailOtp.js";
+import { magicLinkEmail } from "../lib/emailTemplates.js";
 
 /** Auth endpoints beyond the core (social, verification, sessions, MFA, OTP). */
 export const authExtraRouter = Router();
@@ -57,9 +59,8 @@ authExtraRouter.post("/social/:provider", asyncHandler(async (req, res) => {
 authExtraRouter.post("/resend-verification", requireAuth, asyncHandler(async (req, res) => {
   const userId = authUserId(req);
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-  const token = randomToken();
-  await prisma.emailToken.create({ data: { userId, token, type: "VERIFY", expiresAt: new Date(Date.now() + 86400000) } });
-  await sendEmail(user.email, "Verify your email", `Your verification code: ${token}`);
+  // Send a fresh 6-digit code via the branded verification template.
+  await issueEmailOtp(userId, user.email);
   ok(res, { sent: true });
 }));
 
@@ -163,7 +164,8 @@ authExtraRouter.post("/magic-link", asyncHandler(async (req, res) => {
   if (user) {
     const token = randomToken();
     await prisma.emailToken.create({ data: { userId: user.id, token, type: "RESET", expiresAt: new Date(Date.now() + 900000) } });
-    await sendEmail(email, "Your sign-in link", `Sign-in token: ${token}`);
+    const tpl = magicLinkEmail(`dollface://magic-link?token=${token}`);
+    await sendEmail(email, tpl.subject, tpl.text, tpl.html);
   }
   ok(res, { message: "If that email exists, a sign-in link has been sent." });
 }));
