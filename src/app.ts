@@ -14,6 +14,10 @@ import { buildOpenApiSpec } from "./docs/openapi.js";
 export function createApp() {
   const app = express();
 
+  // Behind Render/Cloudflare: trust the first proxy hop so rate-limiting keys on
+  // the real client IP (not the shared proxy IP) — otherwise all users share one bucket.
+  app.set("trust proxy", 1);
+
   if (env.NODE_ENV !== "test") app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/health" } }));
   app.use(helmet({ contentSecurityPolicy: false })); // CSP off so Swagger UI assets load
   app.use(cors({ origin: env.corsOrigins.length ? env.corsOrigins : true, credentials: true }));

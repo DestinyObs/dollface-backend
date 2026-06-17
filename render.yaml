@@ -29,15 +29,13 @@ services:
         value: "*"
       - key: ADMIN_EMAILS
         sync: false
-      # Test deployment: show the email OTP code in the API response so testers
-      # without an inbox can verify. Remove when RESEND_API_KEY is configured.
-      - key: EXPOSE_OTP
-        value: "1"
-      # Real verification emails when set (Resend). Optional.
-      # - key: RESEND_API_KEY
-      #   sync: false
-      # - key: EMAIL_FROM
-      #   value: DollFace <no-reply@yourdomain>
+      # Real verification emails via Resend (verified domain). With this set,
+      # the OTP code is emailed (not returned in the API response). To fall back
+      # to showing the code in-app for testers, set EXPOSE_OTP=1 and unset these.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: DollFace <noreply@resuplyai.com>
 
 databases:
   - name: dollface-db
